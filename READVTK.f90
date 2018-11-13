@@ -10,7 +10,6 @@
       LOGICAL isBinary, foundVar(2)
       INTEGER i, a, e, fid, m, iPos, nNo, nEl, tmpI(eNoN+1), g
       REAL(KIND=8) N(eNoN,nG), xi(nsd,eNoN), Nxi(nsd,eNoN), s, w(nG), t
-      REAL(KIND=8) xXi(nsd,nsd), xiX(nsd,nsd)
       CHARACTER c
       CHARACTER(LEN=stdL) rLine, tmp, fName
       INTEGER, ALLOCATABLE :: IEN(:,:)
@@ -19,9 +18,9 @@
       REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd)
       REAL(KIND=8) :: prntx(nsd), prtx(nsd)
       INTEGER cnt
+      REAL(KIND=8),ALLOCATABLE :: test (:), test2(:,:)
 
-      REAL(KIND=8), ALLOCATABLE :: vel(:,:), pres(:), X(:,:),
-     2   pGrad(:,:)
+      REAL(KIND=8), ALLOCATABLE :: vel(:,:), pres(:), X(:,:)
 
       cnt=1
       w = 1D0/24D0
@@ -65,8 +64,8 @@
          IF (rLine(1:6) .EQ. 'BINARY') THEN
             isBinary = .TRUE.
             CLOSE(fid)
-            OPEN (fid, FILE=fName, STATUS='UNKNOWN', ACCESS='STREAM',
-     2         FORM='UNFORMATTED', CONVERT='BIG_ENDIAN')
+            OPEN (fid, FILE=fName, STATUS='UNKNOWN', ACCESS='STREAM',&
+     &         FORM='UNFORMATTED', CONVERT='BIG_ENDIAN')
             iPos = 1
             EXIT
          END IF
@@ -98,8 +97,8 @@
       READ (rLine,*) nNo
       PRINT *, "Number of nodes:", nNo
 !     Allocating space for position vector, vel, and pres
-      ALLOCATE(x(nsd,nNo), vel(nsd,nNo), pres(nNo), tmpS(nNo),
-     2   tmpV(nsd,nNo))
+      ALLOCATE(x(nsd,nNo), vel(nsd,nNo), pres(nNo), tmpS(nNo), &
+     &   tmpV(nsd,nNo))
       IF (isBinary) THEN
          DO a=1, nNo
             READ(fid,END=001) tmpV(:,a)
@@ -206,8 +205,8 @@
          rLine = rLine(1:i-6)
 !     Expecting to find Navier-Stokes
          IF (rLine(1:2) .NE. 'NS') THEN
-            PRINT *, "Skipping equation <"//rLine(1:2)//"> in "
-     2         //TRIM(fName)
+            PRINT *, "Skipping equation <"//rLine(1:2)//"> in " &
+     &         //TRIM(fName)
             CYCLE
          END IF
          rLine = rLine(4:)
@@ -263,6 +262,9 @@
       prtx(3) = 6.35D0
       
 
+      CALL SBDomain(x,(/4,3,3/),test,test2)
+      !print *, test2(1,1),minval(x(1,:))
+
       do a=1,nEl
       xg(:,1) = x(:,IEN(1,a))
       xg(:,2) = x(:,IEN(2,a))
@@ -272,7 +274,6 @@
       if (.not.(ANY(prntx.lt.0))) EXIT
       cnt=cnt+1
       end do
-      print *, cnt
       !CALL grad(pres, pGrad)
       !print *, pgrad(:,1:10)
       
@@ -288,8 +289,8 @@
       REAL(KIND=8), INTENT(OUT) :: v(nsd,nNo)
 
       INTEGER e, g, a, Ac
-      REAL(KIND=8) Nx(nsd,eNoN), xl(nsd,eNoN), Jac, ksix(nsd,nsd),
-     2   vl(nsd)
+      REAL(KIND=8) Nx(nsd,eNoN), xl(nsd,eNoN), Jac, ksix(nsd,nsd),&
+     &   vl(nsd)
       REAL(KIND=8), ALLOCATABLE :: sA(:), sF(:,:)
 
       ALLOCATE(sA(nNo), sF(nsd,nNo))
@@ -369,12 +370,12 @@
             xXi(:,3) = xXi(:,3) + x(:,a)*Nxi(3,a)
          END DO
          
-         Jac = xXi(1,1)*xXi(2,2)*xXi(3,3)
-     2       + xXi(1,2)*xXi(2,3)*xXi(3,1)
-     3       + xXi(1,3)*xXi(2,1)*xXi(3,2)
-     4       - xXi(1,1)*xXi(2,3)*xXi(3,2)
-     5       - xXi(1,2)*xXi(2,1)*xXi(3,3)
-     6       - xXi(1,3)*xXi(2,2)*xXi(3,1)
+         Jac = xXi(1,1)*xXi(2,2)*xXi(3,3)&
+     &       + xXi(1,2)*xXi(2,3)*xXi(3,1)&
+     &       + xXi(1,3)*xXi(2,1)*xXi(3,2)&
+     &       - xXi(1,1)*xXi(2,3)*xXi(3,2)&
+     &       - xXi(1,2)*xXi(2,1)*xXi(3,3)&
+     &       - xXi(1,3)*xXi(2,2)*xXi(3,1)
 
          xiX(1,1) = (xXi(2,2)*xXi(3,3) - xXi(2,3)*xXi(3,2))/Jac
          xiX(1,2) = (xXi(3,2)*xXi(1,3) - xXi(3,3)*xXi(1,2))/Jac
@@ -397,57 +398,79 @@
          ks(3,2) = ks(2,3)
          
          DO a=1, eNoN
-            Nx(1,a) = Nx(1,a) + Nxi(1,a)*xiX(1,1) 
-     2                        + Nxi(2,a)*xiX(2,1) 
-     3                        + Nxi(3,a)*xiX(3,1)
+            Nx(1,a) = Nx(1,a) + Nxi(1,a)*xiX(1,1)  &
+     &                        + Nxi(2,a)*xiX(2,1)  &
+     &                        + Nxi(3,a)*xiX(3,1)
             
-            Nx(2,a) = Nx(2,a) + Nxi(1,a)*xiX(1,2) 
-     2                        + Nxi(2,a)*xiX(2,2) 
-     3                        + Nxi(3,a)*xiX(3,2)
+            Nx(2,a) = Nx(2,a) + Nxi(1,a)*xiX(1,2) &
+     &                        + Nxi(2,a)*xiX(2,2) &
+     &                        + Nxi(3,a)*xiX(3,2)
             
-            Nx(3,a) = Nx(3,a) + Nxi(1,a)*xiX(1,3) 
-     2                        + Nxi(2,a)*xiX(2,3) 
-     3                        + Nxi(3,a)*xiX(3,3)
+            Nx(3,a) = Nx(3,a) + Nxi(1,a)*xiX(1,3) &
+     &                        + Nxi(2,a)*xiX(2,3) &
+     &                        + Nxi(3,a)*xiX(3,3)
 
          END DO
          DO a=1, nsd
-            prntx(a) = xiX(a,1)*(prtx(1) - x(1,4)) + 
-     2                 xiX(a,2)*(prtx(2) - x(2,4)) + 
-     3                 xiX(a,3)*(prtx(3) - x(3,4))
+            prntx(a) = xiX(a,1)*(prtx(1) - x(1,4)) + &
+     &                 xiX(a,2)*(prtx(2) - x(2,4)) + &
+     &                 xiX(a,3)*(prtx(3) - x(3,4))
          END DO
       END IF
 
       RETURN
       END SUBROUTINE GNN
 
-
-
 !####################################################################
-      PURE SUBROUTINE SBDomain(mesh,split,sbel,sbdim)
-      REAL, INTENT(IN) :: mesh(nsd,nNo)
+      SUBROUTINE SBDomain(x,split,sbel,sbdim)
+      REAL(KIND=8), INTENT(IN) :: x(nsd,nNo)
       INTEGER, INTENT(IN) :: split(nsd)
-      REAL, INTENT(OUT),ALLOCATABLE :: sbel(:),sbdim(:,:)
-      INTEGER :: ii, jj,kk !Added ii,jj
+      REAL(KIND=8), INTENT(OUT),ALLOCATABLE:: sbel(:),sbdim(:,:)
+      INTEGER :: ii,jj,cnt2
+      INTEGER, ALLOCATABLE :: seq1(:),seq2(:),seq3(:)
+      REAL(KIND=8) :: diff(nsd),step(nsd)
 
       ALLOCATE(sbdim(nsd*2,split(1)*split(2)*split(3)))
       sbdim=0D0
-      do kk=1,split(1)
-        do ii=1,split(2)
-          do jj=1,split(3)
-          
-!       sbdim(1,(jj+(ii-1)*split(3)+(a-1)*split(3)*split(2)))=MINVAL(mesh(1,:)) +
-!1      sbdim(1,-1+(jj+(ii-1)*split(3)+(a-1)*split(3)*split(2)))
+      ALLOCATE(sbel(2))
+      sbel=0D0
+      ALLOCATE(seq1(split(3)*split(2)),seq2(split(3)*split(1)),seq3(split(2)*split(1)))
 
+      diff(1)=MAXVAL(x(1,:))-MINVAL(x(1,:))
+      diff(2)=MAXVAL(x(2,:))-MINVAL(x(2,:))
+      diff(3)=MAXVAL(x(3,:))-MINVAL(x(3,:))
+      step=diff/split
+      print *, step,diff,MinVAL(x(1,:))
 
-          end do
-        end do
+      seq1=(/(ii, ii=0, split(2)*split(3)-1, 1)/)*split(1)+1
+
+      cnt2=0
+      do a=1,split(1)*split(3)
+            seq2(a)=a+cnt2*(split(2)-1)*split(1)
+            if (MOD(a,split(1)).eq.0) cnt2=cnt2+1
+      end do
+
+      seq3=(/(ii, ii=0, split(1)*split(2)-1, 1)/)+1
+print *, seq1
+
+      do ii=1,split(1)
+            !sbdim(1,+ii)
+
       end do
 
 
 
+      sbdim(1,:)=(/(ii, ii=0, split(1), 1)/)
+      sbdim(3,:)=(/(ii, ii=0, split(2), 1)/)
+      sbdim(5,:)=(/(ii, ii=0, split(3), 1)/)
 
 
-
+      sbdim(1,:)=sbdim(1,:)*step(1)+MINVAL(x(1,:))
+      sbdim(2,:)=sbdim(1,:)+step(1)
+      sbdim(3,:)=sbdim(3,:)*step(2)+MINVAL(x(2,:))
+      sbdim(2,:)=sbdim(3,:)+step(2)
+      sbdim(1,:)=sbdim(5,:)*step(3)+MINVAL(x(3,:))
+      sbdim(2,:)=sbdim(5,:)+step(3)
 
       END SUBROUTINE SBDomain
       END PROGRAM READVTK
