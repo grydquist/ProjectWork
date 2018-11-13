@@ -15,8 +15,14 @@
       CHARACTER(LEN=stdL) rLine, tmp, fName
       INTEGER, ALLOCATABLE :: IEN(:,:)
       REAL, ALLOCATABLE :: tmpS(:), tmpV(:,:)
+!Grant Test
+      REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd)
+      REAL(KIND=8) :: prntx(nsd), prtx(nsd)
+
       REAL(KIND=8), ALLOCATABLE :: vel(:,:), pres(:), X(:,:),
      2   pGrad(:,:)
+
+     
 
       w = 1D0/24D0
       s = (5D0 + 3D0*SQRT(5D0))/2D1
@@ -45,9 +51,11 @@
       Nxi(3,4) = -1D0
 
 !     Reading the name of the vtk file
-      CALL GETARG(1,fName)
-      fName = ADJUSTL(fName)
+      fName="pipe_example_100.vtk"
+      !CALL GETARG(1,fName)
+      !fName = ADJUSTL(fName)
       fid = 1
+      print * , fName
       OPEN(fid, FILE=fName, STATUS='OLD')
       
       isBinary = .FALSE.
@@ -245,26 +253,25 @@
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
       pres = 1D0
-      ALLOCATE(pGrad(nsd,nNo))
+      !ALLOCATE(pGrad(nsd,nNo))
 
-      CALL grad(pres, pGrad)
-      print *, pgrad(:,1:10)
+
+
+      prtx(1) = -0.4D0
+      prtx(2) = -1.4D0
+      prtx(3) = 6.35D0
+      
+      xg(:,1) = x(:,IEN(1,1))
+      xg(:,2) = x(:,IEN(2,1))
+      xg(:,3) = x(:,IEN(3,1))
+      xg(:,4) = x(:,IEN(4,1))
+      !print *, xg
+      CALL GNN(xg,Nx,Jac,ks,prntx,prtx)
+      print * , prntx
+
+      !CALL grad(pres, pGrad)
+      !print *, pgrad(:,1:10)
       
 
 
@@ -291,7 +298,7 @@
             Ac = IEN(a,e)
             xl(:,a) = x(:,Ac)
          END DO
-         CALL GNN(xl, Nx, Jac, ksix)
+         !CALL GNN(xl, Nx, Jac, ksix)
          DO g=1, nG
             vl = 0D0
             DO a=1, eNoN
@@ -319,15 +326,15 @@
       END SUBROUTINE grad
 
 !####################################################################
-      PURE SUBROUTINE GNN(x, Nx, Jac, ks)
+      PURE SUBROUTINE GNN(x, Nx, Jac, ks,prntx,prtx)
       IMPLICIT NONE
-      REAL(KIND=8), INTENT(IN) :: x(nsd,eNoN)
-      REAL(KIND=8), INTENT(OUT) :: Nx(nsd,eNoN), Jac, ks(nsd,nsd)
-
-      INTEGER a
+      REAL(KIND=8), INTENT(IN) :: x(nsd,eNoN), prtx(nsd)
+      REAL(KIND=8), INTENT(OUT) :: Nx(nsd,eNoN), Jac, ks(nsd,nsd) 
+      REAL(KIND=8), INTENT(OUT) :: prntx(nsd)
+      INTEGER :: a
       REAL(KIND=8) xXi(nsd,nsd), xiX(nsd,nsd)
 
-
+      prntx = 0D0
       Nx  = 0D0
       xXi = 0D0
       IF (nsd .EQ. 2) THEN
@@ -398,6 +405,12 @@
             Nx(3,a) = Nx(3,a) + Nxi(1,a)*xiX(1,3) 
      2                        + Nxi(2,a)*xiX(2,3) 
      3                        + Nxi(3,a)*xiX(3,3)
+
+         END DO
+         DO a=1, nsd
+            prntx(a) = xiX(a,1)*(prtx(1) - x(1,4)) + 
+     2                 xiX(a,2)*(prtx(2) - x(2,4)) + 
+     3                 xiX(a,3)*(prtx(3) - x(3,4))
          END DO
       END IF
 

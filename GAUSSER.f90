@@ -6,7 +6,7 @@
 
 
       REAL(KIND=8) :: x(3,4)
-      REAL(KIND=8) :: Nx(3,4), Jac, ks(3,4), prntx(3), prtx(3), diff(3)
+      REAL(KIND=8) :: Nx(3,4), Jac, ks(3,4), prntx(3), prtx(3)
 
       INTEGER :: a
       REAL(KIND=8) :: xXi(3,3), xiX(3,3)
