@@ -18,7 +18,7 @@
       REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd)
       REAL(KIND=8) :: prntx(nsd), prtx(nsd)
       INTEGER cnt
-      REAL(KIND=8),ALLOCATABLE :: test (:), test2(:,:)
+      REAL(KIND=8),ALLOCATABLE :: test (:,:), test2(:,:)
 
       REAL(KIND=8), ALLOCATABLE :: vel(:,:), pres(:), X(:,:)
 
@@ -262,7 +262,7 @@
       prtx(3) = 6.35D0
       
 
-      CALL SBDomain(x,(/4,3,3/),test,test2)
+      CALL SBDomain(x,(/4,2,3/),test,test2)
       !print *, test2(1,1),minval(x(1,:))
 
       do a=1,nEl
@@ -425,52 +425,60 @@
       SUBROUTINE SBDomain(x,split,sbel,sbdim)
       REAL(KIND=8), INTENT(IN) :: x(nsd,nNo)
       INTEGER, INTENT(IN) :: split(nsd)
-      REAL(KIND=8), INTENT(OUT),ALLOCATABLE:: sbel(:),sbdim(:,:)
+      REAL(KIND=8), INTENT(OUT),ALLOCATABLE:: sbel(:,:),sbdim(:,:)
       INTEGER :: ii,jj,cnt2
       INTEGER, ALLOCATABLE :: seq1(:),seq2(:),seq3(:)
       REAL(KIND=8) :: diff(nsd),step(nsd)
 
+      ! sbdim is the dimensions of each of the search boxes, with minx,maxx,miny,maxy,minz,maxz
       ALLOCATE(sbdim(nsd*2,split(1)*split(2)*split(3)))
       sbdim=0D0
-      ALLOCATE(sbel(2))
+      ! sbel is the id of the elements with a searchbox
+      ALLOCATE(sbel(split(1)*split(2)*split(3),nEl))
       sbel=0D0
+
+      ! these sequences are just for allocating sbdim
       ALLOCATE(seq1(split(3)*split(2)),seq2(split(3)*split(1)),seq3(split(2)*split(1)))
 
+      ! Domain ranges
       diff(1)=MAXVAL(x(1,:))-MINVAL(x(1,:))
       diff(2)=MAXVAL(x(2,:))-MINVAL(x(2,:))
       diff(3)=MAXVAL(x(3,:))-MINVAL(x(3,:))
+      ! Difference between searchboxes
       step=diff/split
-      print *, step,diff,MinVAL(x(1,:))
 
       seq1=(/(ii, ii=0, split(2)*split(3)-1, 1)/)*split(1)+1
-
       cnt2=0
       do a=1,split(1)*split(3)
             seq2(a)=a+cnt2*(split(2)-1)*split(1)
             if (MOD(a,split(1)).eq.0) cnt2=cnt2+1
       end do
-
       seq3=(/(ii, ii=0, split(1)*split(2)-1, 1)/)+1
-print *, seq1
 
+      ! Allocating sbdim
       do ii=1,split(1)
-            !sbdim(1,+ii)
-
+         sbdim(1,seq1+ii-1)=MINVAL(x(1,:))+step(1)*(ii-1)
       end do
 
+      do ii=1,split(2)
+         sbdim(3,seq2+(ii-1)*split(1))=MINVAL(x(2,:))+step(2)*(ii-1)
+      end do
 
+      do ii=1,split(3)
+         sbdim(5,seq3+(ii-1)*split(1)*split(2))=MINVAL(x(3,:))+step(3)*(ii-1)
+      end do
 
-      sbdim(1,:)=(/(ii, ii=0, split(1), 1)/)
-      sbdim(3,:)=(/(ii, ii=0, split(2), 1)/)
-      sbdim(5,:)=(/(ii, ii=0, split(3), 1)/)
-
-
-      sbdim(1,:)=sbdim(1,:)*step(1)+MINVAL(x(1,:))
       sbdim(2,:)=sbdim(1,:)+step(1)
-      sbdim(3,:)=sbdim(3,:)*step(2)+MINVAL(x(2,:))
-      sbdim(2,:)=sbdim(3,:)+step(2)
-      sbdim(1,:)=sbdim(5,:)*step(3)+MINVAL(x(3,:))
-      sbdim(2,:)=sbdim(5,:)+step(3)
+      sbdim(4,:)=sbdim(3,:)+step(2)
+      sbdim(6,:)=sbdim(5,:)+step(3)
+
+      do ii=1,split(1)*split(2)*split(3)
+         cnt2=0
+         do jj=1,Nel
+            !if Any((x(1,IEN(:,jj).gt.sbdim(1,ii)
+
+         end do
+      end do
 
       END SUBROUTINE SBDomain
       END PROGRAM READVTK
