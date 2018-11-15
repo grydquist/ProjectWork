@@ -16,10 +16,11 @@
       REAL, ALLOCATABLE :: tmpS(:), tmpV(:,:)
 !Grant Test
       REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd)
-      REAL(KIND=8) :: prntx(nsd), prtx(nsd)
+      REAL(KIND=8) :: prntx(nsd), prtx(nsd),shps(eNoN)
       INTEGER cnt
       INTEGER, ALLOCATABLE :: test (:,:)
       REAL(KIND=8),ALLOCATABLE ::  test2(:,:)
+      INTEGER :: sbid,elid
 
       REAL(KIND=8), ALLOCATABLE :: vel(:,:), pres(:), X(:,:)
 
@@ -250,41 +251,38 @@
 !####################################################################
 !     Your own implementation: nNo, nEl, x, vel, pres, IEN are given
 !####################################################################
-
-
-
       pres = 1D0
       !ALLOCATE(pGrad(nsd,nNo))
+      IEN=IEN+1
 
-
-
-      prtx(1) = -0.6D0
-      prtx(2) = -1.4D0
-      prtx(3) = 6.35D0
+      prtx(1) = 1D0
+      prtx(2) = -1.2D0
+      prtx(3) = 13.2D0
       
+      CALL SBDomain(x,(/10,10,10/),test,test2)
+      CALL xSB(prtx,test2,(/10,10,10/),sbid)
+      CALL xEl(test(sbid,:),prtx,x,elid)
 
-      CALL SBDomain(x,(/4,2,3/),test,test2)
-      !print *, test2(1,1),minval(x(1,:))
+      print *, elid,shps
 
       do a=1,nEl
       xg(:,1) = x(:,IEN(1,a))
       xg(:,2) = x(:,IEN(2,a))
       xg(:,3) = x(:,IEN(3,a))
       xg(:,4) = x(:,IEN(4,a))
-      CALL GNN(xg,Nx,Jac,ks,prntx,prtx)
-      if (.not.(ANY(prntx.lt.0))) EXIT
+      CALL GNN(xg,Nx,Jac,ks,prntx,prtx,shps)
+      if ((ALL(shps.gt.0))) EXIT
       cnt=cnt+1
       end do
-      !CALL grad(pres, pGrad)
-      !print *, pgrad(:,1:10)
+      print *, cnt,shps
       
-
-
       STOP 
  001  STOP "A block of data is missing"
 
       CONTAINS
 !--------------------------------------------------------------------         
+      
+      !Be careful here with IEN here
       SUBROUTINE grad(s, v)
       REAL(KIND=8), INTENT(IN) :: s(nNo)
       REAL(KIND=8), INTENT(OUT) :: v(nsd,nNo)
@@ -331,11 +329,11 @@
       END SUBROUTINE grad
 
 !####################################################################
-      PURE SUBROUTINE GNN(x, Nx, Jac, ks,prntx,prtx)
+      PURE SUBROUTINE GNN(x, Nx, Jac, ks,prntx,prtx,shps)
       IMPLICIT NONE
       REAL(KIND=8), INTENT(IN) :: x(nsd,eNoN), prtx(nsd)
       REAL(KIND=8), INTENT(OUT) :: Nx(nsd,eNoN), Jac, ks(nsd,nsd) 
-      REAL(KIND=8), INTENT(OUT) :: prntx(nsd)
+      REAL(KIND=8), INTENT(OUT) :: prntx(nsd),shps(eNoN)
       INTEGER :: a
       REAL(KIND=8) xXi(nsd,nsd), xiX(nsd,nsd)
 
@@ -417,6 +415,12 @@
      &                 xiX(a,2)*(prtx(2) - x(2,4)) + &
      &                 xiX(a,3)*(prtx(3) - x(3,4))
          END DO
+
+         shps(1)=prntx(1)
+         shps(2)=prntx(2)
+         shps(3)=prntx(3)
+         shps(4)=1-prntx(1)-prntx(2)-prntx(3)
+
       END IF
 
       RETURN
@@ -428,7 +432,7 @@
       INTEGER, INTENT(IN) :: split(nsd)
       REAL(KIND=8), INTENT(OUT),ALLOCATABLE :: sbdim(:,:)
       INTEGER, INTENT(OUT), ALLOCATABLE :: sbel(:,:)
-      INTEGER :: ii,jj,cnt2,kk
+      INTEGER :: ii,jj,cnt2
       LOGICAL :: inbox(eNoN)
       INTEGER, ALLOCATABLE :: seq1(:),seq2(:),seq3(:)
       REAL(KIND=8) :: diff(nsd),step(nsd)
@@ -478,13 +482,10 @@
       do ii=1,split(1)*split(2)*split(3)
          cnt2=1
          do jj=1,Nel
-            do kk=1,eNoN
-               ! Checks if node value kk of element jj is in searchbox it
-               !needs to be checked to make sure IEN+1 is ok
-               inbox(kk)=((x(1,IEN(kk,jj)+1).gt.sbdim(1,ii)).and.(x(1,IEN(kk,jj)+1).lt.sbdim(2,ii)).and. &
-                      &   (x(2,IEN(kk,jj)+1).gt.sbdim(3,ii)).and.(x(2,IEN(kk,jj)+1).lt.sbdim(4,ii)).and. &
-                      &   (x(3,IEN(kk,jj)+1).gt.sbdim(5,ii)).and.(x(3,IEN(kk,jj)+1).lt.sbdim(6,ii))) 
-            end do
+               ! Checks if node values of element jj is in searchbox ii
+               inbox=((x(1,IEN(:,jj)).gt.sbdim(1,ii)).and.(x(1,IEN(:,jj)).lt.sbdim(2,ii)).and. &
+                      &   (x(2,IEN(:,jj)).gt.sbdim(3,ii)).and.(x(2,IEN(:,jj)).lt.sbdim(4,ii)).and. &
+                      &   (x(3,IEN(:,jj)).gt.sbdim(5,ii)).and.(x(3,IEN(:,jj)).lt.sbdim(6,ii))) 
            ! Puts element into searchbox 
             if (any(inbox)) then
                sbel(ii,cnt2) = jj
@@ -492,8 +493,12 @@
             end if
          end do
       end do
+      !
+      ! Still need to work on corners
+      !
       END SUBROUTINE SBDomain
 
+!####################################################################
       ! Find which Searchbox x is in
       SUBROUTINE xSB(x,sbdim,split,sbid)
       IMPLICIT NONE
@@ -501,7 +506,7 @@
       REAL(KIND=8), INTENT(IN) :: x(nsd)
       INTEGER, INTENT(IN) :: split(nsd)
       INTEGER, INTENT(OUT) :: sbid
-      REAL(KIND=8) :: step(nsd)
+      REAL(KIND=8) :: step(nsd),xzero(nsd)
       INTEGER :: xsteps(nsd)
 
       ! Searchbox dimensions
@@ -509,32 +514,29 @@
       step(2)=sbdim(4,1)-sbdim(3,1)
       step(3)=sbdim(6,1)-sbdim(5,1)
 
+      ! Set domain back to zero
+      xzero(1)=x(1)-minval(sbdim(1,:))
+      xzero(2)=x(2)-minval(sbdim(3,:))
+      xzero(3)=x(3)-minval(sbdim(5,:))
+
       ! Find which searchbox the particle is in
-
       ! Number of searchbox steps in x,y,and z
-      xsteps=FLOOR(x/step)
-
+      xsteps=FLOOR(xzero/step)
       sbid=xsteps(1)+split(1)*xsteps(2)+split(1)*split(2)*xsteps(3)+1
-
-      ! Still need to check to see if this works
       ! Could likely move xEl up here
       !
       !
       END SUBROUTINE xSB
 
-
-      !
-      ! Still needs testing
-      !
-
+!####################################################################
       ! Finds element x is in
-      SUBROUTINE xEl(sbel,prtx,x,elid)
+      PURE SUBROUTINE xEl(sbel,prtx,x,elid)
       IMPLICIT NONE
       REAL(KIND=8), INTENT(IN) :: prtx(nsd), x(nsd,nNo)
       INTEGER, INTENT(IN) :: sbel(nEl)
       INTEGER, INTENT(OUT) :: elid
       INTEGER :: ii,cnt,a
-      REAL(KIND=8) :: Jac,prntx(nsd),xXi(nsd,nsd), xiX(nsd,nsd)
+      REAL(KIND=8) :: Jac,prntx(nsd),xXi(nsd,nsd), xiX(nsd,nsd),shps(eNoN),Nx(nsd,eNoN)
       cnt=1
 
       do ii=1,nEl
@@ -597,12 +599,17 @@
          END DO
       END IF
 
-      IF (ALL(prntx.gt.0D0)) elid=ii; EXIT
+      shps(1)=prntx(1)
+      shps(2)=prntx(2)
+      shps(3)=prntx(3)
+      shps(4)=1-prntx(1)-prntx(2)-prntx(3)
 
+      IF (ALL(shps.gt.0D0)) then
+         elid=sbel(ii)
+         EXIT
+      END IF
          
       end do
-
-
 
       END SUBROUTINE xEl
 
