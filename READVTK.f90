@@ -18,7 +18,8 @@
       REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd)
       REAL(KIND=8) :: prntx(nsd), prtx(nsd)
       INTEGER cnt
-      REAL(KIND=8),ALLOCATABLE :: test (:,:), test2(:,:)
+      INTEGER, ALLOCATABLE :: test (:,:)
+      REAL(KIND=8),ALLOCATABLE ::  test2(:,:)
 
       REAL(KIND=8), ALLOCATABLE :: vel(:,:), pres(:), X(:,:)
 
@@ -289,7 +290,7 @@
       REAL(KIND=8), INTENT(OUT) :: v(nsd,nNo)
 
       INTEGER e, g, a, Ac
-      REAL(KIND=8) Nx(nsd,eNoN), xl(nsd,eNoN), Jac, ksix(nsd,nsd),&
+      REAL(KIND=8) Nx(nsd,eNoN), xl(nsd,eNoN), Jac, &
      &   vl(nsd)
       REAL(KIND=8), ALLOCATABLE :: sA(:), sF(:,:)
 
@@ -422,11 +423,13 @@
       END SUBROUTINE GNN
 
 !####################################################################
-      SUBROUTINE SBDomain(x,split,sbel,sbdim)
+      PURE SUBROUTINE SBDomain(x,split,sbel,sbdim)
       REAL(KIND=8), INTENT(IN) :: x(nsd,nNo)
       INTEGER, INTENT(IN) :: split(nsd)
-      REAL(KIND=8), INTENT(OUT),ALLOCATABLE:: sbel(:,:),sbdim(:,:)
-      INTEGER :: ii,jj,cnt2
+      REAL(KIND=8), INTENT(OUT),ALLOCATABLE :: sbdim(:,:)
+      INTEGER, INTENT(OUT), ALLOCATABLE :: sbel(:,:)
+      INTEGER :: ii,jj,cnt2,kk
+      LOGICAL :: inbox(eNoN)
       INTEGER, ALLOCATABLE :: seq1(:),seq2(:),seq3(:)
       REAL(KIND=8) :: diff(nsd),step(nsd)
 
@@ -444,14 +447,14 @@
       diff(1)=MAXVAL(x(1,:))-MINVAL(x(1,:))
       diff(2)=MAXVAL(x(2,:))-MINVAL(x(2,:))
       diff(3)=MAXVAL(x(3,:))-MINVAL(x(3,:))
-      ! Difference between searchboxes
+      ! Absolute searchbox dimensions
       step=diff/split
 
       seq1=(/(ii, ii=0, split(2)*split(3)-1, 1)/)*split(1)+1
       cnt2=0
-      do a=1,split(1)*split(3)
-            seq2(a)=a+cnt2*(split(2)-1)*split(1)
-            if (MOD(a,split(1)).eq.0) cnt2=cnt2+1
+      do ii=1,split(1)*split(3)
+            seq2(ii)=ii+cnt2*(split(2)-1)*split(1)
+            if (MOD(ii,split(1)).eq.0) cnt2=cnt2+1
       end do
       seq3=(/(ii, ii=0, split(1)*split(2)-1, 1)/)+1
 
@@ -473,12 +476,134 @@
       sbdim(6,:)=sbdim(5,:)+step(3)
 
       do ii=1,split(1)*split(2)*split(3)
-         cnt2=0
+         cnt2=1
          do jj=1,Nel
-            !if Any((x(1,IEN(:,jj).gt.sbdim(1,ii)
-
+            do kk=1,eNoN
+               ! Checks if node value kk of element jj is in searchbox it
+               !needs to be checked to make sure IEN+1 is ok
+               inbox(kk)=((x(1,IEN(kk,jj)+1).gt.sbdim(1,ii)).and.(x(1,IEN(kk,jj)+1).lt.sbdim(2,ii)).and. &
+                      &   (x(2,IEN(kk,jj)+1).gt.sbdim(3,ii)).and.(x(2,IEN(kk,jj)+1).lt.sbdim(4,ii)).and. &
+                      &   (x(3,IEN(kk,jj)+1).gt.sbdim(5,ii)).and.(x(3,IEN(kk,jj)+1).lt.sbdim(6,ii))) 
+            end do
+           ! Puts element into searchbox 
+            if (any(inbox)) then
+               sbel(ii,cnt2) = jj
+               cnt2=cnt2+1
+            end if
          end do
       end do
-
       END SUBROUTINE SBDomain
+
+      ! Find which Searchbox x is in
+      SUBROUTINE xSB(x,sbdim,split,sbid)
+      IMPLICIT NONE
+      REAL(KIND=8), INTENT(IN),ALLOCATABLE:: sbdim(:,:)
+      REAL(KIND=8), INTENT(IN) :: x(nsd)
+      INTEGER, INTENT(IN) :: split(nsd)
+      INTEGER, INTENT(OUT) :: sbid
+      REAL(KIND=8) :: step(nsd)
+      INTEGER :: xsteps(nsd)
+
+      ! Searchbox dimensions
+      step(1)=sbdim(2,1)-sbdim(1,1)
+      step(2)=sbdim(4,1)-sbdim(3,1)
+      step(3)=sbdim(6,1)-sbdim(5,1)
+
+      ! Find which searchbox the particle is in
+
+      ! Number of searchbox steps in x,y,and z
+      xsteps=FLOOR(x/step)
+
+      sbid=xsteps(1)+split(1)*xsteps(2)+split(1)*split(2)*xsteps(3)+1
+
+      ! Still need to check to see if this works
+      ! Could likely move xEl up here
+      !
+      !
+      END SUBROUTINE xSB
+
+
+      !
+      ! Still needs testing
+      !
+
+      ! Finds element x is in
+      SUBROUTINE xEl(sbel,prtx,x,elid)
+      IMPLICIT NONE
+      REAL(KIND=8), INTENT(IN) :: prtx(nsd), x(nsd,nNo)
+      INTEGER, INTENT(IN) :: sbel(nEl)
+      INTEGER, INTENT(OUT) :: elid
+      INTEGER :: ii,cnt,a
+      REAL(KIND=8) :: Jac,prntx(nsd),xXi(nsd,nsd), xiX(nsd,nsd)
+      cnt=1
+
+      do ii=1,nEl
+
+      prntx = 0D0
+      xXi = 0D0
+
+      IF (nsd .EQ. 2) THEN
+      !
+      ! 2D not done
+      !
+         DO a=1, eNoN
+            xXi(:,1) = xXi(:,1) + x(:,a)*Nxi(1,a)
+            xXi(:,2) = xXi(:,2) + x(:,a)*Nxi(2,a)
+         END DO
+
+         Jac = xXi(1,1)*xXi(2,2) - xXi(1,2)*xXi(2,1)
+
+         xiX(1,1) =  xXi(2,2)/Jac
+         xiX(1,2) = -xXi(1,2)/Jac
+         xiX(2,1) = -xXi(2,1)/Jac
+         xiX(2,2) =  xXi(1,1)/Jac
+
+         
+         DO a=1, eNoN
+            Nx(1,a) = Nx(1,a)+ Nxi(1,a)*xiX(1,1) + Nxi(2,a)*xiX(2,1)
+            Nx(2,a) = Nx(2,a)+ Nxi(1,a)*xiX(1,2) + Nxi(2,a)*xiX(2,2)
+         END DO
+
+
+      ELSE
+
+         DO a=1, eNoN
+            xXi(:,1) = xXi(:,1) + x(:,IEN(a,sbel(ii)))*Nxi(1,a)
+            xXi(:,2) = xXi(:,2) + x(:,IEN(a,sbel(ii)))*Nxi(2,a)
+            xXi(:,3) = xXi(:,3) + x(:,IEN(a,sbel(ii)))*Nxi(3,a)
+         END DO
+         
+         Jac = xXi(1,1)*xXi(2,2)*xXi(3,3)&
+     &       + xXi(1,2)*xXi(2,3)*xXi(3,1)&
+     &       + xXi(1,3)*xXi(2,1)*xXi(3,2)&
+     &       - xXi(1,1)*xXi(2,3)*xXi(3,2)&
+     &       - xXi(1,2)*xXi(2,1)*xXi(3,3)&
+     &       - xXi(1,3)*xXi(2,2)*xXi(3,1)
+
+         xiX(1,1) = (xXi(2,2)*xXi(3,3) - xXi(2,3)*xXi(3,2))/Jac
+         xiX(1,2) = (xXi(3,2)*xXi(1,3) - xXi(3,3)*xXi(1,2))/Jac
+         xiX(1,3) = (xXi(1,2)*xXi(2,3) - xXi(1,3)*xXi(2,2))/Jac
+         xiX(2,1) = (xXi(2,3)*xXi(3,1) - xXi(2,1)*xXi(3,3))/Jac
+         xiX(2,2) = (xXi(3,3)*xXi(1,1) - xXi(3,1)*xXi(1,3))/Jac
+         xiX(2,3) = (xXi(1,3)*xXi(2,1) - xXi(1,1)*xXi(2,3))/Jac
+         xiX(3,1) = (xXi(2,1)*xXi(3,2) - xXi(2,2)*xXi(3,1))/Jac
+         xiX(3,2) = (xXi(3,1)*xXi(1,2) - xXi(3,2)*xXi(1,1))/Jac
+         xiX(3,3) = (xXi(1,1)*xXi(2,2) - xXi(1,2)*xXi(2,1))/Jac
+         
+         DO a=1, nsd
+            prntx(a) = xiX(a,1)*(prtx(1) - x(1,IEN(4,sbel(ii)))) + &
+     &                 xiX(a,2)*(prtx(2) - x(2,IEN(4,sbel(ii)))) + &
+     &                 xiX(a,3)*(prtx(3) - x(3,IEN(4,sbel(ii))))
+         END DO
+      END IF
+
+      IF (ALL(prntx.gt.0D0)) elid=ii; EXIT
+
+         
+      end do
+
+
+
+      END SUBROUTINE xEl
+
       END PROGRAM READVTK
