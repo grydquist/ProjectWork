@@ -16,15 +16,16 @@
       REAL, ALLOCATABLE :: tmpS(:), tmpV(:,:)
 !Grant Test
       REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd)
-      REAL(KIND=8) :: prntx(nsd), prtx(nsd),shps(eNoN)
+      REAL(KIND=8) :: prntx(nsd), prtx(nsd),shps(eNoN),pvel(nsd)
       INTEGER cnt
       INTEGER, ALLOCATABLE :: test (:,:)
       REAL(KIND=8),ALLOCATABLE ::  test2(:,:)
       INTEGER :: sbid,elid
+      REAL, PARAMETER :: pi=3.1415926535897932384626433
 
       REAL(KIND=8), ALLOCATABLE :: vel(:,:), pres(:), X(:,:)
 
-      cnt=1
+
       w = 1D0/24D0
       s = (5D0 + 3D0*SQRT(5D0))/2D1
       t = (5D0 -     SQRT(5D0))/2D1
@@ -254,6 +255,14 @@
       pres = 1D0
       !ALLOCATE(pGrad(nsd,nNo))
       IEN=IEN+1
+      cnt=1
+
+      !Test particle velocity
+      pvel(1)=0
+      pvel(2)=0
+      pvel(3)=0
+
+      !Test particle position
 
       prtx(1) = 1D0
       prtx(2) = 1.5D0
@@ -261,9 +270,11 @@
       
       CALL SBDomain(x,(/10,10,10/),test,test2)
       CALL xSB(prtx,test2,(/10,10,10/),sbid)
-      CALL xEl(test(sbid,:),prtx,x,elid)
+      CALL xEl(test(sbid,:),prtx,x,elid,shps)
 
-      print *, elid, shape(IEN),minval(x(3,:))
+      CALL prtAdvance(prtx,pvel,elid,shps,vel,x)
+
+      print *, elid, shps
 
       do a=1,nEl
       xg(:,1) = x(:,IEN(1,a))
@@ -547,13 +558,14 @@
 
 !####################################################################
       ! Finds element x is in
-      PURE SUBROUTINE xEl(sbel,prtx,x,elid)
+      PURE SUBROUTINE xEl(sbel,prtx,x,elid,shps)
       IMPLICIT NONE
       REAL(KIND=8), INTENT(IN) :: prtx(nsd), x(nsd,nNo)
       INTEGER, INTENT(IN) :: sbel(nEl)
       INTEGER, INTENT(OUT) :: elid
+      REAL(KIND=8),INTENT(OUT) :: shps(eNoN)
       INTEGER :: ii,cnt,a
-      REAL(KIND=8) :: Jac,prntx(nsd),xXi(nsd,nsd), xiX(nsd,nsd),shps(eNoN),Nx(nsd,eNoN)
+      REAL(KIND=8) :: Jac,prntx(nsd),xXi(nsd,nsd), xiX(nsd,nsd),Nx(nsd,eNoN)
       cnt=1
 
       do ii=1,nEl
@@ -629,5 +641,49 @@
       end do
 
       END SUBROUTINE xEl
+
+      ! Advance 1 Particle through flow
+      SUBROUTINE prtAdvance(prtx,pvel,elid,shps,vel,x)
+      IMPLICIT NONE
+      REAL(KIND=8), INTENT(INOUT) :: prtx(nsd), pvel(nsd)
+      REAL(KIND=8), INTENT(IN)    :: shps(eNoN), vel(nsd,nNo), x(nsd,nNo)
+      INTEGER,INTENT(IN) ::   elid
+      REAL(KIND=8) :: fvel(nsd)
+      INTEGER ii,jj
+
+      !Particle/fluid Parameters
+      REAL(KIND=8) :: g(nsd), rho, mu, dp, rhop, mp, taup
+
+      ! Gravity
+      g=0D0
+      ! Fluid density
+      rho=1D0
+      ! Fluid viscosity
+      mu=0.01D0
+      ! Particle diameter
+      dp=0.01D0
+      ! Particle Density
+      rhop=1D0
+      ! Particle mass
+      mp=pi*rho/6D0*dp**3D0
+      ! Particle time scale
+      taup=rhop*dp**2.0D0/mu/18.0D0
+
+      ! Interpolate velocity at particle point
+      fvel=0D0
+      do ii=1,nsd
+         do jj=1,eNoN
+            fvel(ii) = fvel(ii) + vel(ii,IEN(jj,elid))*shps(jj)
+         end do
+      end do
+
+      
+
+
+
+
+      prtx(1)=x(1,1)
+      pvel=1
+      END SUBROUTINE prtAdvance
 
       END PROGRAM READVTK
