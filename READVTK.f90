@@ -16,10 +16,10 @@
       REAL, ALLOCATABLE :: tmpS(:), tmpV(:,:)
 !Grant Test
       REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd)
-      REAL(KIND=8) :: prntx(nsd), prtx(nsd),shps(eNoN),pvel(nsd)
-      INTEGER cnt
-      INTEGER, ALLOCATABLE :: test (:,:)
-      REAL(KIND=8),ALLOCATABLE ::  test2(:,:)
+      REAL(KIND=8) :: prntx(nsd), prtx(nsd),shps(eNoN),pvel(nsd),time
+      INTEGER cnt, split(nsd)
+      INTEGER, ALLOCATABLE :: sbel(:,:)
+      REAL(KIND=8),ALLOCATABLE ::  sbdim(:,:)
       INTEGER :: sbid,elid
       REAL, PARAMETER :: pi=3.1415926535897932384626433
 
@@ -266,15 +266,25 @@
 
       prtx(1) = 1D0
       prtx(2) = 1.5D0
-      prtx(3) = 20D0
+      prtx(3) = 10D0
+
+      ! split searchboxes this many times
+      split = (/10,10,10/)
+
+      vel = 0D0
+      vel(3,:) = 0.1D0
       
-      CALL SBDomain(x,(/10,10,10/),test,test2)
-      CALL xSB(prtx,test2,(/10,10,10/),sbid)
-      CALL xEl(test(sbid,:),prtx,x,elid,shps)
+      CALL SBDomain(x,split,sbel,sbdim)
+      CALL xSB(prtx,sbdim,split,sbid)
+      CALL xEl(sbel(sbid,:),prtx,x,elid,shps)
+      time=0d0
 
+      do a=1,10000
       CALL prtAdvance(prtx,pvel,elid,shps,vel,x)
+      print *, prtx,pvel(3),time
+      end do
 
-      print *, elid, shps
+      !print *, elid, shps
 
       do a=1,nEl
       xg(:,1) = x(:,IEN(1,a))
@@ -285,13 +295,13 @@
       if ((ALL(shps.gt.0))) EXIT
       cnt=cnt+1
       end do
-      print *, cnt,shps
+      !print *, cnt,shps
       
       STOP 
  001  STOP "A block of data is missing"
 
       CONTAINS
-!--------------------------------------------------------------------         
+!#################################################################### GRAD      
       
       !Be careful here with IEN here
       SUBROUTINE grad(s, v)
@@ -320,7 +330,7 @@
                vl = vl + Nx(:,a)*s(Ac)
             END DO
 
-!     Mapping Tau into the nodes by assembling it into a local vector
+      !Mapping Tau into the nodes by assembling it into a local vector
             DO a=1, eNoN
                Ac       = IEN(a,e)
                sA(Ac)   = sA(Ac)   + w(g)*Jac*N(a,g)
@@ -339,7 +349,7 @@
       RETURN
       END SUBROUTINE grad
 
-!####################################################################
+!#################################################################### GNN
       PURE SUBROUTINE GNN(x, Nx, Jac, ks,prntx,prtx,shps)
       IMPLICIT NONE
       REAL(KIND=8), INTENT(IN) :: x(nsd,eNoN), prtx(nsd)
@@ -437,7 +447,7 @@
       RETURN
       END SUBROUTINE GNN
 
-!####################################################################
+!#################################################################### SBDOMAIN
       PURE SUBROUTINE SBDomain(x,split,sbel,sbdim)
       REAL(KIND=8), INTENT(IN) :: x(nsd,nNo)
       INTEGER, INTENT(IN) :: split(nsd)
@@ -526,7 +536,7 @@
       !
       END SUBROUTINE SBDomain
 
-!####################################################################
+!#################################################################### XSB
       ! Find which Searchbox x is in
       SUBROUTINE xSB(x,sbdim,split,sbid)
       IMPLICIT NONE
@@ -556,7 +566,7 @@
       !
       END SUBROUTINE xSB
 
-!####################################################################
+!#################################################################### XEL
       ! Finds element x is in
       PURE SUBROUTINE xEl(sbel,prtx,x,elid,shps)
       IMPLICIT NONE
@@ -642,17 +652,19 @@
 
       END SUBROUTINE xEl
 
-      ! Advance 1 Particle through flow
-      SUBROUTINE prtAdvance(prtx,pvel,elid,shps,vel,x)
-      IMPLICIT NONE
-      REAL(KIND=8), INTENT(INOUT) :: prtx(nsd), pvel(nsd)
-      REAL(KIND=8), INTENT(IN)    :: shps(eNoN), vel(nsd,nNo), x(nsd,nNo)
+!#################################################################### PRTDRAG
+      !Find acceleration on particle from drag
+      SUBROUTINE prtDrag(pvel,elid,shps,vel,apd)
+      REAL(KIND=8), INTENT(IN)    :: shps(eNoN), vel(nsd,nNo), pvel(nsd)
       INTEGER,INTENT(IN) ::   elid
+      REAL(KIND=8), INTENT(OUT) :: apd(nsd)
       REAL(KIND=8) :: fvel(nsd)
       INTEGER ii,jj
 
       !Particle/fluid Parameters
-      REAL(KIND=8) :: g(nsd), rho, mu, dp, rhop, mp, taup
+      REAL(KIND=8) :: g(nsd), rho, mu, dp, rhop, mp
+      ! Derived from flow
+      REAL(KIND=8) :: taup, fSN, magud, Rep, relvel(nsd)
 
       ! Gravity
       g=0D0
@@ -661,13 +673,13 @@
       ! Fluid viscosity
       mu=0.01D0
       ! Particle diameter
-      dp=0.01D0
+      dp=0.1D0
       ! Particle Density
       rhop=1D0
       ! Particle mass
       mp=pi*rho/6D0*dp**3D0
-      ! Particle time scale
-      taup=rhop*dp**2.0D0/mu/18.0D0
+      ! Particle relaxation time
+      taup=rhop*dp**2D0/mu/18D0
 
       ! Interpolate velocity at particle point
       fvel=0D0
@@ -677,13 +689,69 @@
          end do
       end do
 
+      ! Relative velocity
+      relvel = fvel-pvel
+      ! Relative velocity magnitude
+      magud = SUM(relvel**2D0)**0.5D0
+      ! Reynolds Number
+      Rep = dp*magud*rhop/mu
+      ! Schiller-Neumann (finite Re) correction
+      fSN = 1D0 + 0.15D0*Rep**0.687D0
+      ! Stokes corrected drag force
+      apD = fSN/taup*relvel
+      ! Particle acceleration, with forces, gravity, and buoyancy
       
+      END SUBROUTINE prtDrag
+
+!#################################################################### PRTADVANCE
+      ! Advance 1 Particle through flow
+      SUBROUTINE prtAdvance(prtx,pvel,elid,shps,vel,x)
+      IMPLICIT NONE
+      REAL(KIND=8), INTENT(INOUT) :: prtx(nsd), pvel(nsd)
+      REAL(KIND=8), INTENT(IN)    :: shps(eNoN), vel(nsd,nNo), x(nsd,nNo)
+      INTEGER,INTENT(IN) ::   elid
+      REAL(KIND=8) :: shpsp(eNoN)
+      INTEGER sbidp,elidp
+
+      !Particle/fluid Parameters
+      REAL(KIND=8) :: g(nsd), rho, rhop, dtp
+      ! Derived from flow
+      REAL(KIND=8) :: apT(nsd), apd(nsd), apdpred(nsd), apTpred(nsd)
+      ! RK2 stuff
+      REAL(KIND=8) :: prtxpred(nsd), pvelpred(nsd)
+
+      ! Time step, keep under searchbox dimension
+      !!!!!!!!!!!!!!!!!
+      dtp = 0.001D0
+      ! Gravity
+      g=0D0
+      ! Fluid density
+      rho=1D0
+      ! Particle Density
+      rhop=1D0
 
 
+      CALL prtDrag(pvel,elid,shps,vel,apd)
 
+      ! Total acceleration (just drag and buoyancy now)
+      ! Add in collisions function eventually
+      apT = apd + g*(1D0 - rho/rhop)
 
-      prtx(1)=x(1,1)
-      pvel=1
+      ! 2nd order advance (Heun's Method)
+      ! Predictor
+      pvelpred = pvel + dtp*apT
+      prtxpred = prtx + dtp*pvel
+
+      CALL xSB(prtxpred,sbdim,split,sbidp)
+      CALL xEl(sbel(sbidp,:),prtxpred,x,elidp,shpsp)
+      CALL prtDrag(pvelpred,elidp,shpsp,vel,apdpred)
+
+      apTpred = apdpred + g*(1D0 - rho/rhop)
+
+      pvel = pvel + 0.5D0*dtp*(apT+apTpred)
+      prtx = prtx + 0.5D0*dtp*(pvel+pvelpred)
+      time=time+dtp
+
       END SUBROUTINE prtAdvance
 
       END PROGRAM READVTK
