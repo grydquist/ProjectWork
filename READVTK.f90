@@ -256,14 +256,14 @@
       IEN=IEN+1
 
       prtx(1) = 1D0
-      prtx(2) = -1.2D0
-      prtx(3) = 13.2D0
+      prtx(2) = 1.5D0
+      prtx(3) = 20D0
       
       CALL SBDomain(x,(/10,10,10/),test,test2)
       CALL xSB(prtx,test2,(/10,10,10/),sbid)
       CALL xEl(test(sbid,:),prtx,x,elid)
 
-      print *, elid,shps
+      print *, elid, shape(IEN),minval(x(3,:))
 
       do a=1,nEl
       xg(:,1) = x(:,IEN(1,a))
@@ -432,10 +432,10 @@
       INTEGER, INTENT(IN) :: split(nsd)
       REAL(KIND=8), INTENT(OUT),ALLOCATABLE :: sbdim(:,:)
       INTEGER, INTENT(OUT), ALLOCATABLE :: sbel(:,:)
-      INTEGER :: ii,jj,cnt2
-      LOGICAL :: inbox(eNoN)
+      INTEGER :: ii,jj,cnt2,kk
+      !LOGICAL :: inbox(eNoN)
       INTEGER, ALLOCATABLE :: seq1(:),seq2(:),seq3(:)
-      REAL(KIND=8) :: diff(nsd),step(nsd)
+      REAL(KIND=8) :: diff(nsd),step(nsd), elbox(2*nsd,nEl)
 
       ! sbdim is the dimensions of each of the search boxes, with minx,maxx,miny,maxy,minz,maxz
       ALLOCATE(sbdim(nsd*2,split(1)*split(2)*split(3)))
@@ -479,18 +479,35 @@
       sbdim(4,:)=sbdim(3,:)+step(2)
       sbdim(6,:)=sbdim(5,:)+step(3)
 
+      ! Making boxes surrounding elements
+      do ii=1,Nel
+         do jj=1,nsd
+            elbox(2*jj-1,ii) = MINVAL(x(jj,IEN(:,ii)))
+            elbox(2*jj  ,ii) = MAXVAL(x(jj,IEN(:,ii)))
+         end do
+      end do
+
       do ii=1,split(1)*split(2)*split(3)
          cnt2=1
          do jj=1,Nel
-               ! Checks if node values of element jj is in searchbox ii
-               inbox=((x(1,IEN(:,jj)).gt.sbdim(1,ii)).and.(x(1,IEN(:,jj)).lt.sbdim(2,ii)).and. &
-                      &   (x(2,IEN(:,jj)).gt.sbdim(3,ii)).and.(x(2,IEN(:,jj)).lt.sbdim(4,ii)).and. &
-                      &   (x(3,IEN(:,jj)).gt.sbdim(5,ii)).and.(x(3,IEN(:,jj)).lt.sbdim(6,ii))) 
-           ! Puts element into searchbox 
-            if (any(inbox)) then
-               sbel(ii,cnt2) = jj
-               cnt2=cnt2+1
-            end if
+            ! Check if elements are completely outside searchbox
+            do kk=1,nsd
+               ! Cycle if min value elbox .gt. max value seachbox & vice-verse
+               if (elbox(2*kk-1,jj).gt.sbdim(2*kk-1,ii)) cycle
+               if (elbox(2*kk  ,jj).gt.sbdim(2*kk  ,ii)) cycle
+            end do
+
+            ! Old, dated method
+
+            ! Checks if node values of element jj is in searchbox ii
+            !inbox=((x(1,IEN(:,jj)).gt.sbdim(1,ii)).and.(x(1,IEN(:,jj)).lt.sbdim(2,ii)).and. &
+            !          &   (x(2,IEN(:,jj)).gt.sbdim(3,ii)).and.(x(2,IEN(:,jj)).lt.sbdim(4,ii)).and. &
+            !          &   (x(3,IEN(:,jj)).gt.sbdim(5,ii)).and.(x(3,IEN(:,jj)).lt.sbdim(6,ii))) 
+            ! Puts element into searchbox 
+            !if (any(inbox)) then
+            sbel(ii,cnt2) = jj
+            cnt2=cnt2+1
+            !end if
          end do
       end do
       !
