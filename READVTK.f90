@@ -272,18 +272,22 @@
       split = (/10,10,10/)
 
       vel = 0D0
-      vel(3,:) = 0.1D0
+      !vel(3,:) = 0.1D0
       
       CALL SBDomain(x,split,sbel,sbdim)
       CALL xSB(prtx,sbdim,split,sbid)
       CALL xEl(sbel(sbid,:),prtx,x,elid,shps)
       time=0d0
 
+
+      open(88,file='pos.txt')
       do a=1,10000
       CALL prtAdvance(prtx,pvel,elid,shps,vel,x)
-      print *, prtx,pvel(3),time
+      write(88,*) pvel(3)
+      !print *, prtx,pvel(3),time
       end do
 
+      close(88)
       !print *, elid, shps
 
       do a=1,nEl
@@ -654,17 +658,18 @@
 
 !#################################################################### PRTDRAG
       !Find acceleration on particle from drag
-      SUBROUTINE prtDrag(pvel,elid,shps,vel,apd)
+      SUBROUTINE prtDrag(pvel,elid,shps,vel,apd,taupo)
       REAL(KIND=8), INTENT(IN)    :: shps(eNoN), vel(nsd,nNo), pvel(nsd)
       INTEGER,INTENT(IN) ::   elid
       REAL(KIND=8), INTENT(OUT) :: apd(nsd)
-      REAL(KIND=8) :: fvel(nsd)
+      REAL(KIND=8) :: fvel(nsd),taup
       INTEGER ii,jj
+      REAL(KIND=8), INTENT(OUT), OPTIONAL :: taupo
 
       !Particle/fluid Parameters
       REAL(KIND=8) :: g(nsd), rho, mu, dp, rhop, mp
       ! Derived from flow
-      REAL(KIND=8) :: taup, fSN, magud, Rep, relvel(nsd)
+      REAL(KIND=8) :: fSN, magud, Rep, relvel(nsd)
 
       ! Gravity
       g=0D0
@@ -680,6 +685,7 @@
       mp=pi*rho/6D0*dp**3D0
       ! Particle relaxation time
       taup=rhop*dp**2D0/mu/18D0
+      if (present(taupo)) taupo=taup
 
       ! Interpolate velocity at particle point
       fvel=0D0
@@ -699,7 +705,6 @@
       fSN = 1D0 + 0.15D0*Rep**0.687D0
       ! Stokes corrected drag force
       apD = fSN/taup*relvel
-      ! Particle acceleration, with forces, gravity, and buoyancy
       
       END SUBROUTINE prtDrag
 
@@ -711,27 +716,37 @@
       REAL(KIND=8), INTENT(IN)    :: shps(eNoN), vel(nsd,nNo), x(nsd,nNo)
       INTEGER,INTENT(IN) ::   elid
       REAL(KIND=8) :: shpsp(eNoN)
-      INTEGER sbidp,elidp
+      INTEGER sbidp,elidp, ii
 
       !Particle/fluid Parameters
-      REAL(KIND=8) :: g(nsd), rho, rhop, dtp
+      REAL(KIND=8) :: g(nsd), rho, rhop, dtp,maxdtp,sbdt(nsd)
       ! Derived from flow
-      REAL(KIND=8) :: apT(nsd), apd(nsd), apdpred(nsd), apTpred(nsd)
+      REAL(KIND=8) :: apT(nsd), apd(nsd), apdpred(nsd), apTpred(nsd), taup
       ! RK2 stuff
       REAL(KIND=8) :: prtxpred(nsd), pvelpred(nsd)
 
-      ! Time step, keep under searchbox dimension
-      !!!!!!!!!!!!!!!!!
-      dtp = 0.001D0
       ! Gravity
       g=0D0
+      g(3)=1D0
       ! Fluid density
       rho=1D0
       ! Particle Density
-      rhop=1D0
+      rhop=2D0
 
+      ! Time step, keep under searchbox dimension (still need to match to overall flow solver)
+      ! Maxdt for overall solver
+      maxdtp = 0.001D0
 
-      CALL prtDrag(pvel,elid,shps,vel,apd)
+      ! Get drag acceleration/particle relaxation time
+      CALL prtDrag(pvel,elid,shps,vel,apd,taup)
+
+      ! Separate into sb sizes (could be optimized here)
+      do ii=1,nsd
+         sbdt(ii)=(sbdim(2*ii,1)-sbdim(2*ii-1,1))/pvel(ii)
+      end do
+      
+      ! dtp is minimum between time to travel half searchbox, 1/10 relaxation time, and maxdtp
+      dtp = min(maxdtp,0.5*minval(sbdt),taup/10)
 
       ! Total acceleration (just drag and buoyancy now)
       ! Add in collisions function eventually
@@ -748,6 +763,7 @@
 
       apTpred = apdpred + g*(1D0 - rho/rhop)
 
+      ! Corrector
       pvel = pvel + 0.5D0*dtp*(apT+apTpred)
       prtx = prtx + 0.5D0*dtp*(pvel+pvelpred)
       time=time+dtp
