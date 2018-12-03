@@ -825,12 +825,15 @@
       if (tcr.gt.dtp) RETURN
 
       ! particle locations at point of collision
+      ! This is not the most accurate right now. It could be done so you use Heun's
+      !     to tcr, then Heun's again to the end of the step. Look at later
       x1tmp = v1*tcr
       x2tmp = v2*tcr
 
       ! Vector perpendicular to collision tangent line
       nrm = (x1tmp - x2tmp)/((dp1+dp2)/2)
 
+      ! 
 
       END SUBROUTINE prtCollide
 
