@@ -794,7 +794,8 @@
       REAL(KIND=8), INTENT(IN) :: dp1, dp2, m1, m2, k, dtp
       ! Calculating distance coefficient
       REAL(KIND=8) :: a, b, c, d, e, f, qa, qb, qc, zeros(2), tcr
-      REAL(KIND=8) :: x1tmp(nsd), x2tmp(nsd), nrm(nsd)
+      REAL(KIND=8) :: x1tmp(nsd), x2tmp(nsd), nrm(nsd) 
+      REAL(KIND=8) :: vpar1, vpar2, vperp1, vperp2
 
       ! First, check if particles will collide at current trajectory
       a = x1(1)-x2(1)
@@ -826,14 +827,14 @@
 
       ! particle locations at point of collision
       ! This is not the most accurate right now. It could be done so you use Heun's
-      !     to tcr, then Heun's again to the end of the step. Look at later
+      !     to tcr, then Heun's again to the end of the step. Look at later. 
       x1tmp = v1*tcr
       x2tmp = v2*tcr
 
-      ! Vector perpendicular to collision tangent line
+      ! Vector parallel and pependicular to collision tangent line
       nrm = (x1tmp - x2tmp)/((dp1+dp2)/2)
 
-      ! 
+      ! Get  parallel and perpendicular velocities
 
       END SUBROUTINE prtCollide
 
