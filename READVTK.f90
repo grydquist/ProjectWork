@@ -15,26 +15,37 @@
       INTEGER, ALLOCATABLE :: IEN(:,:)
       REAL, ALLOCATABLE :: tmpS(:), tmpV(:,:)
 !Grant Test
-      REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd),time, test1(nsd),tester(nsd), test2(nsd)
-      INTEGER cnt, split(nsd),j
+      REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd),time!, test1(nsd),tester(nsd), test2(nsd)
+      INTEGER cnt, split(nsd),j, k
       INTEGER, ALLOCATABLE :: sbel(:,:)
       REAL(KIND=8),ALLOCATABLE ::  sbdim(:,:)
 
       !prtcollide tests
-      REAL(KIND=8) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd)
+      !REAL(KIND=8) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd)
 
       TYPE prt
       ! Properties
-         REAL(KIND=8) :: mp, dp = 1D0, rhop = 1D0
+         REAL(KIND=8) :: mp, dp = 1D0, rhop = 0.1D0
       ! Flow characteristics
          REAL(KIND=8) :: x(nsd), vel(nsd), prntx(nsd), shps(eNoN), remdtp
       ! Searechbox/ element location
-         INTEGER :: sbid(2**nsd), elid
+         INTEGER :: sbid(2**nsd), elid, near(Np)
       ! Collisions with other particles
          LOGICAL :: collided=.false.
       END TYPE prt
 
+      ! Collection of particles
       type(prt) :: prts(Np)
+
+      TYPE sb
+      ! Searchbox dimensions
+         REAL(KIND=8) :: dims(nsd*2)
+      ! Elements contained in searchbox
+         INTEGER, ALLOCATABLE :: els(:)
+      END TYPE sb
+
+      ! Domain spliited into sb's
+      type(sb), ALLOCATABLE :: sbdom(:)
 
       REAL, PARAMETER :: pi=3.1415926535897932384626433
 
@@ -274,53 +285,34 @@
       IEN=IEN+1
       cnt=1
 
-
-      ! Testing cross product and geometry stuff
-      test1=(/1,1,1/)/(sqrt(3D0))
-      tester=(/1,1,-1/)/(sqrt(3D0))
-      test2=cross(cross(test1,tester),test1)
-      !print *, test2, cross(test2,test1)
-      !print *, sqrt(sum(tester*test2)**2+sum(tester*test1)**2), sum(test1*test2)
-
-      x1=(/0,0,0/)
-      x2=(/0,4,0/)
-      v1=(/1,1,0/)
-      v2=(/1,-2,0/)
-      prts(1)%x = x1
-      prts(2)%x = x2
-      prts(1)%vel=v1
-      prts(2)%vel=v2
-
-      !CALL prtCollide(prts(1), prts(2), 1D0, 1D0)
-      !print *, prts(1)%vel
-      !print *, prts(2)%vel
-
-
       !Test particle velocity
       prts(1)%vel(1)=0
       prts(1)%vel(2)=0
-      prts(1)%vel(3)=0
+      prts(1)%vel(3)=1
 
       prts(2)%vel(1)=0
       prts(2)%vel(2)=0
-      prts(2)%vel(3)=-3D0
+      prts(2)%vel(3)=-1D0
 
       !Test particle position
 
-      prts(1)%x(1) = 1D0
-      prts(1)%x(2) = 1.5D0
+      prts(1)%x(1) = 0D0
+      prts(1)%x(2) = 0D0
       prts(1)%x(3) = 10D0
 
-      prts(2)%x(1) = 1D0
-      prts(2)%x(2) = 1.5D0
-      prts(2)%x(3) = 11D0
+      prts(2)%x(1) = 0D0
+      prts(2)%x(2) = 0.7D0
+      prts(2)%x(3) = 11.5D0
 
       ! split searchboxes this many times
       split = (/10,10,10/)
+      
+      ALLOCATE(sbdom(split(1)*split(2)*split(2)))
+
       ALLOCATE(sbel(split(1)*split(2)*split(2),nEl))
 
       vel = 0D0
-      !vel(3,:) = 0.1D0
+      vel(3,:) = 0.1D0
       
       CALL SBDomain(x,split,sbel,sbdim)
       CALL xSB(prts(1)%x,sbdim,split,prts(1)%sbid)
@@ -332,27 +324,21 @@
       do a=1,10000
          do i=1,Np
             CALL xSB(prts(i)%x,sbdim,split,prts(i)%sbid)
-            CALL xEl(sbel(prts(i)%sbid(i),:),prts(i)%x,x,prts(i)%elid,prts(i)%shps)
-            CALL prtAdvance(prts(i)%x,prts(i)%vel,prts(i)%elid,prts(i)%shps,vel,x)   
+            CALL xEl(sbel(prts(i)%sbid(1),:),prts(i)%x,x,prts(i)%elid,prts(i)%shps)
+            if (i.eq.2) then
+               k=-1
+            else
+               k=1
+            end if
+            CALL prtAdvance(prts(i),k*vel,x)   
          end do
 
          do i=1,Np
                ! Collisions
             do j=1,Np
-
-               ! If the particle collides and has been advanced, skip checking collisions               
-               if (prts(i)%collided) then
-                  EXIT
-               end if
-
-                  ! Check if the particle collides with any other particles. Advance if so
-                  !CALL prtCollide(prts(i),prts(j),1D0,0.001)
+               ! Check if the particle collides with any other particles and hasn't collided. Advance if so.
+               if ((i.ne.j).and.(.not.(prts(i)%collided))) CALL prtCollide(prts(i),prts(j),1D0,0.01D0)
             end do
-
-            ! Collided particles are already advanced, but uncollided aren't
-            if (prts(i)%collided) then
-               EXIT
-            end if
 
             ! If particles haven't collided, advance by vel*dtp
             if (.not.(prts(i)%collided)) then
@@ -361,7 +347,7 @@
                prts(i)%collided = .false.
             end if
 
-            !print *, prts(i)%x,time
+            print *, prts(i)%x,time
          end do
 
          !!! Need searchbox implementsation (shouldn't be too hard)
@@ -372,14 +358,13 @@
          !!! Only advance to this collision, then make new dt = dt - tcr
          !!! When checking for particle collisions, advance other particles by tcr
          !!! And Boom! Should work. Will need some testing
+         !!! Honestly, probably don't need mult in one time step though
 
 
-         write(88,*) prts(1)%vel(3)
+         write(88,*) prts(1)%x,prts(2)%x
       end do
 
       close(88)
-      
-      print *, prts(1)%elid, prts(1)%shps
 
       do a=1,nEl
       xg(:,1) = x(:,IEN(1,a))
@@ -673,7 +658,7 @@
 
 !#################################################################### XEL
       ! Finds element particle of position x is in is in
-      PURE SUBROUTINE xEl(sbel,prtx,x,elid,shps)
+      SUBROUTINE xEl(sbel,prtx,x,elid,shps)
       IMPLICIT NONE
       REAL(KIND=8), INTENT(IN) :: prtx(nsd), x(nsd,nNo)
       INTEGER, INTENT(IN) :: sbel(nEl)
@@ -682,6 +667,7 @@
       INTEGER :: ii,cnt,a
       REAL(KIND=8) :: Jac,prntx(nsd),xXi(nsd,nsd), xiX(nsd,nsd),Nx(nsd,eNoN)
       cnt=1
+      elid=0
 
       do ii=1,nEl
 
@@ -755,25 +741,26 @@
          
       end do
 
+      if (elid.eq.0) print *, 'outside domain'
+
       END SUBROUTINE xEl
 
 !#################################################################### PRTDRAG
       ! Find acceleration on one particle from drag
-      SUBROUTINE prtDrag(pvel,elid,shps,vel,apd,taupo)
-      REAL(KIND=8), INTENT(IN)    :: shps(eNoN), vel(nsd,nNo), pvel(nsd)
-      INTEGER,INTENT(IN) ::   elid
+      SUBROUTINE prtDrag(myprt,vel,apd,taupo)
+      TYPE(prt), INTENT(IN) :: myprt
+      REAL(KIND=8), INTENT(IN)  :: vel(nsd,nNo)
       REAL(KIND=8), INTENT(OUT) :: apd(nsd)
       REAL(KIND=8) :: fvel(nsd),taup
       INTEGER ii,jj
       REAL(KIND=8), INTENT(OUT), OPTIONAL :: taupo
 
       !Particle/fluid Parameters
-      REAL(KIND=8) :: g(nsd), rho, mu, dp, rhop, mp
+      REAL(KIND=8) :: rho, mu, dp, rhop, mp
       ! Derived from flow
       REAL(KIND=8) :: fSN, magud, Rep, relvel(nsd)
 
-      ! Gravity
-      g=0D0
+
       ! Fluid density
       rho=1D0
       ! Fluid viscosity
@@ -785,19 +772,19 @@
       ! Particle mass
       mp=pi*rho/6D0*dp**3D0
       ! Particle relaxation time
-      taup=rhop*dp**2D0/mu/18D0
+      taup=myprt%rhop*myprt%dp**2D0/mu/18D0
       if (present(taupo)) taupo=taup
 
       ! Interpolate velocity at particle point
       fvel=0D0
       do ii=1,nsd
          do jj=1,eNoN
-            fvel(ii) = fvel(ii) + vel(ii,IEN(jj,elid))*shps(jj)
+            fvel(ii) = fvel(ii) + vel(ii,IEN(jj,myprt%elid))*myprt%shps(jj)
          end do
       end do
 
       ! Relative velocity
-      relvel = fvel-pvel
+      relvel = fvel-myprt%vel
       ! Relative velocity magnitude
       magud = SUM(relvel**2D0)**0.5D0
       ! Reynolds Number
@@ -811,39 +798,39 @@
 
 !#################################################################### PRTADVANCE
       ! Advance 1 Particle through flow
-      SUBROUTINE prtAdvance(prtx,pvel,elid,shps,vel,x)
+      SUBROUTINE prtAdvance(myprt,vel,x)
       IMPLICIT NONE
-      REAL(KIND=8), INTENT(INOUT) :: pvel(nsd)
-      REAL(KIND=8), INTENT(IN)    :: shps(eNoN), vel(nsd,nNo), x(nsd,nNo),prtx(nsd)
-      INTEGER,INTENT(IN) ::   elid
+      TYPE(prt), INTENT(INOUT) :: myprt
+      TYPE(prt) :: tmpprt
+      REAL(KIND=8), INTENT(IN) :: vel(nsd,nNo), x(nsd,nNo)
       REAL(KIND=8) :: shpsp(eNoN)
       INTEGER sbidp(2**nsd),elidp, ii
 
       !Particle/fluid Parameters
-      REAL(KIND=8) :: g(nsd), rho, rhop, dtp,maxdtp,sbdt(nsd)
+      REAL(KIND=8) :: g(nsd), rho, dtp,maxdtp,sbdt(nsd)
       ! Derived from flow
       REAL(KIND=8) :: apT(nsd), apd(nsd), apdpred(nsd), apTpred(nsd), taup
       ! RK2 stuff
       REAL(KIND=8) :: prtxpred(nsd), pvelpred(nsd)
 
+      tmpprt = myprt
+
       ! Gravity
       g=0D0
-      g(3)=1D0
+      !g(3)=1D0
       ! Fluid density
       rho=1D0
-      ! Particle Density
-      rhop=2D0
 
       !! Time step (still need to match to overall flow solver)
       ! Maxdt for overall solver
-      maxdtp = 0.001D0
+      maxdtp = 0.01D0
 
       ! Get drag acceleration/particle relaxation time
-      CALL prtDrag(pvel,elid,shps,vel,apd,taup)
+      CALL prtDrag(myprt,vel,apd,taup)
 
       ! Separate into sb sizes (could be optimized here)
       do ii=1,nsd
-         sbdt(ii)=(sbdim(2*ii,1)-sbdim(2*ii-1,1))/abs(pvel(ii))
+         sbdt(ii)=(sbdim(2*ii,1)-sbdim(2*ii-1,1))/abs(myprt%vel(ii))
       end do
       
       ! dtp is minimum between time to travel half searchbox, 1/10 relaxation time, and maxdtp
@@ -851,21 +838,26 @@
 
       ! Total acceleration (just drag and buoyancy now)
 
-      apT = apd + g*(1D0 - rho/rhop)
+      apT = apd + g*(1D0 - rho/myprt%rhop)
 
       ! 2nd order advance (Heun's Method)
       ! Predictor
-      pvelpred = pvel + dtp*apT
-      prtxpred = prtx + dtp*pvel
+      pvelpred = myprt%vel + dtp*apT
+      prtxpred = myprt%x + dtp*myprt%vel
+
+      tmpprt%vel = pvelpred
+      tmpprt%x   = prtxpred
 
       CALL xSB(prtxpred,sbdim,split,sbidp)
       CALL xEl(sbel(sbidp(1),:),prtxpred,x,elidp,shpsp)
-      CALL prtDrag(pvelpred,elidp,shpsp,vel,apdpred)
+      tmpprt%elid = elidp
+      tmpprt%shps = shpsp
+      CALL prtDrag(tmpprt,vel,apdpred)
 
-      apTpred = apdpred + g*(1D0 - rho/rhop)
+      apTpred = apdpred + g*(1D0 - rho/myprt%rhop)
 
       ! Corrector
-      pvel = pvel + 0.5D0*dtp*(apT+apTpred)
+      myprt%vel = myprt%vel + 0.5D0*dtp*(apT+apTpred)
 
       ! Collisions work. Just need to figure out how to change velocity of both particles
       !! Maybe get only velocities for particles, bring those out, then advance all particles through flow in
@@ -927,7 +919,7 @@
       zeros(2) = (-qb - sqrt(qb**2D0-4D0*qa*qc))/(2D0*qa)
 
       ! Negative zeros mean the particle would collide previously in time
-      if (ANY(zeros.lt.0D0)) RETURN
+      if (ANY(zeros.le.0D0)) RETURN
 
       tcr = minval(zeros)
 
@@ -944,6 +936,10 @@
       t1 = cross(cross(n1,prt1%vel),n1)
       t2 = cross(cross(n2,prt2%vel),n2)
 
+      ! Rare case with no perpendicular velocity
+      if (ANY(ISNAN(t1))) t1 = 0D0
+      if (ANY(ISNAN(t2))) t2 = 0D0
+      
       ! Get precollision parallel and perpendicular velocities
       vperp1 = sum(t1*prt1%vel)
       vpar1  = sum(n1*prt1%vel)
@@ -964,6 +960,7 @@
       prt2%vel = vpar2*n2 + vperp2*t2
 
       !!! Needs to be extended for multiple collisions per time step (will probably be here)
+      !! Doesn't work if particle is still because of cross products
       ! Advance particle the rest of the time step at this velocity.
       prt1%x = prt1%x + prt1%vel*(dtp - tcr)
       prt2%x = prt2%x + prt2%vel*(dtp - tcr)
@@ -977,8 +974,8 @@
 
       END SUBROUTINE prtCollide
 
-!#################################################################### prtCollide
-      ! I use cross products a couple times above. Also normalizes to normal vector
+!#################################################################### CROSS
+      ! I use cross products a couple times above. Also normalizes to unit vector
       FUNCTION cross(v1,v2)
       IMPLICIT NONE
       REAL(KIND=8) :: cross(nsd)
