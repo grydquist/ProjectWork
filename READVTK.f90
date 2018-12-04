@@ -15,10 +15,13 @@
       INTEGER, ALLOCATABLE :: IEN(:,:)
       REAL, ALLOCATABLE :: tmpS(:), tmpV(:,:)
 !Grant Test
-      REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd),time
+      REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd),time, test1(nsd),tester(nsd), test2(nsd)
       INTEGER cnt, split(nsd)
       INTEGER, ALLOCATABLE :: sbel(:,:)
       REAL(KIND=8),ALLOCATABLE ::  sbdim(:,:)
+
+      !prtcollide tests
+      REAL(KIND=8) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd)
 
       TYPE prt
          REAL(KIND=8) :: x(nsd), vel(nsd), prntx(nsd), shps(eNoN)
@@ -261,6 +264,24 @@
       !ALLOCATE(pGrad(nsd,nNo))
       IEN=IEN+1
       cnt=1
+
+
+      ! Testing cross product and geometry stuff
+      test1=(/1,1,1/)/(sqrt(3D0))
+      tester=(/1,1,-1/)/(sqrt(3D0))
+      test2=cross(cross(test1,tester),test1)
+      !print *, test2, cross(test2,test1)
+      !print *, sqrt(sum(tester*test2)**2+sum(tester*test1)**2), sum(test1*test2)
+
+      x1=(/0,0,0/)
+      x2=(/0,4,0/)
+      v1=(/1,1,0/)
+      v2=(/1,-2,0/)
+
+      CALL prtCollide(x1,x2,v1,v2,1D0,1D0,0.5D0,0.5D0,1D0,1D0)
+      print *, v1
+      print *, v2
+
 
       !Test particle velocity
       prts(1)%vel(1)=0
@@ -747,7 +768,7 @@
       ! Particle Density
       rhop=2D0
 
-      !! Time step, keep under searchbox dimension (still need to match to overall flow solver)
+      !! Time step (still need to match to overall flow solver)
       ! Maxdt for overall solver
       maxdtp = 0.001D0
 
@@ -761,11 +782,9 @@
       
       ! dtp is minimum between time to travel half searchbox, 1/10 relaxation time, and maxdtp
       dtp = min(maxdtp,0.5*minval(sbdt),taup/10)
-      !! end of determining time step
-
 
       ! Total acceleration (just drag and buoyancy now)
-      ! Add in collisions function eventually
+
       apT = apd + g*(1D0 - rho/rhop)
 
       ! 2nd order advance (Heun's Method)
@@ -781,21 +800,28 @@
 
       ! Corrector
       pvel = pvel + 0.5D0*dtp*(apT+apTpred)
-      ! Add in collisions here?
+
+      ! Collisions work. Just need to figure out how to change velocity of both particles
+      !! Maybe get only velocities for particles, bring those out, then advance all particles through flow in
+      !!    collision solver?
       prtx = prtx + 0.5D0*dtp*(pvel+pvelpred)
       time=time+dtp
 
       END SUBROUTINE prtAdvance
 
 !#################################################################### prtCollide
+      ! Detects and enacts collisions
+      !! Only between particles right now
       SUBROUTINE prtCollide(x1,x2,v1,v2,dp1,dp2,m1,m2,k,dtp)
       IMPLICIT NONE
       REAL(KIND=8), INTENT(INOUT) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd)
       REAL(KIND=8), INTENT(IN) :: dp1, dp2, m1, m2, k, dtp
       ! Calculating distance coefficient
       REAL(KIND=8) :: a, b, c, d, e, f, qa, qb, qc, zeros(2), tcr
-      REAL(KIND=8) :: x1tmp(nsd), x2tmp(nsd), nrm(nsd) 
+      REAL(KIND=8) :: n1(nsd), n2(nsd), t1(nsd), t2(nsd)
       REAL(KIND=8) :: vpar1, vpar2, vperp1, vperp2
+      ! Coefficients to make calculating parallel/perp vel easier
+      REAL(KIND=8) :: pa, pb
 
       ! First, check if particles will collide at current trajectory
       a = x1(1)-x2(1)
@@ -812,7 +838,7 @@
       
       qa = b**2D0 + d**2D0 + f**2D0
       qb = 2D0*(a*b + c*d +e*f)
-      qc = a**2D0 + c**2D0 + e**2D0 - (dp1 + dp2)/2D0
+      qc = a**2D0 + c**2D0 + e**2D0 - ((dp1 + dp2)/2D0)**2D0
 
       ! Imaginary zeros means particles won't collide
       if ((qb**2D0-4D0*qa*qc).lt.0) RETURN 
@@ -820,22 +846,68 @@
       ! Zeros are when the particle either enters or leaves vicinity of other particle
       zeros(1) = (-qb + sqrt(qb**2D0-4D0*qa*qc))/(2D0*qa)
       zeros(2) = (-qb - sqrt(qb**2D0-4D0*qa*qc))/(2D0*qa)
+
+      ! Negative zeros mean the particle would collide previously in time
+      if (ANY(zeros.lt.0D0)) RETURN
       tcr = minval(zeros)
 
-      ! Exit function if collision won't occur in time
+      ! Exit function if collision won't occur during timestep
       if (tcr.gt.dtp) RETURN
 
       ! particle locations at point of collision
-      ! This is not the most accurate right now. It could be done so you use Heun's
+      !! This is not the most accurate right now. It could be done so you use Heun's
       !     to tcr, then Heun's again to the end of the step. Look at later. 
-      x1tmp = v1*tcr
-      x2tmp = v2*tcr
+      x1 = v1*tcr + x1
+      x2 = v2*tcr + x2
 
       ! Vector parallel and pependicular to collision tangent line
-      nrm = (x1tmp - x2tmp)/((dp1+dp2)/2)
+      n1 = (x1 - x2)/((dp1+dp2)/2)
+      n2 = -n1
+      t1 = cross(cross(n1,v1),n1)
+      t2 = cross(cross(n2,v2),n2)
 
-      ! Get  parallel and perpendicular velocities
+      ! Get precollision parallel and perpendicular velocities
+      vperp1 = sum(t1*v1)
+      vpar1  = sum(n1*v1)
+      vperp2 = sum(t2*v2)
+      vpar2  = sum(n2*v2)
+
+      ! Note that perpendicular velocities don't change, so we only need to calculate parallel
+      pa = m1*vpar1 - m2*vpar2
+      pb = (-vpar1 - vpar2)*k
+
+      vpar2 = (pa-m1*pb)/(m1+m2)
+      vpar1 = pb + vpar2
+      vpar2 = -vpar2
+
+      ! V here is split into just two velocities, so just add them as vector
+
+      v1 = vpar1*n1 + vperp1*t1
+      v2 = vpar2*n2 + vperp2*t2
+
+      ! Advance particle the rest of the time step at this velocity.
+      x1 = x1 + v1*(dtp - tcr)
+      x2 = x2 + v2*(dtp - tcr)
+
+      !!! Needs to be extended for multiple collisions per time step
+      !! Also, where do I even get information from the other particle?
 
       END SUBROUTINE prtCollide
+
+!#################################################################### prtCollide
+      ! I use cross products a couple times above. Also normalizes to normal vector
+      FUNCTION cross(v1,v2)
+      IMPLICIT NONE
+      REAL(KIND=8) :: cross(nsd)
+      REAL(KIND=8), INTENT(IN) :: v1(nsd), v2(nsd)
+
+      cross(1) = v1(2)*v2(3) - v1(3)*v2(2)
+      cross(2) = v1(3)*v2(1) - v1(1)*v2(3)
+      cross(3) = v1(1)*v2(2) - v1(2)*v2(1)
+
+      cross = cross/sqrt(cross(1)**2D0 + cross(2)**2D0 + cross(3)**2D0)
+      
+      END FUNCTION cross
+
 
       END PROGRAM READVTK
