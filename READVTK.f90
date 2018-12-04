@@ -6,7 +6,7 @@
       INTEGER, PARAMETER :: stdL = 256
 !     Assuming element_number_of_node = 4, degrees_of_freedom = 4, and
 !     number_of_spatial_dimensions = 3
-      INTEGER, PARAMETER :: eNoN=4, dof=4, nsd=3, nG = 4, Np=3
+      INTEGER, PARAMETER :: eNoN=4, dof=4, nsd=3, nG = 4, Np=2
       LOGICAL isBinary, foundVar(2)
       INTEGER i, a, e, fid, m, iPos, nNo, nEl, tmpI(eNoN+1), g
       REAL(KIND=8) N(eNoN,nG), xi(nsd,eNoN), Nxi(nsd,eNoN), s, w(nG), t
@@ -16,7 +16,7 @@
       REAL, ALLOCATABLE :: tmpS(:), tmpV(:,:)
 !Grant Test
       REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd),time, test1(nsd),tester(nsd), test2(nsd)
-      INTEGER cnt, split(nsd)
+      INTEGER cnt, split(nsd),j
       INTEGER, ALLOCATABLE :: sbel(:,:)
       REAL(KIND=8),ALLOCATABLE ::  sbdim(:,:)
 
@@ -24,15 +24,16 @@
       REAL(KIND=8) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd)
 
       TYPE prt
-         REAL(KIND=8) :: x(nsd), vel(nsd), prntx(nsd), shps(eNoN)
+         REAL(KIND=8) :: x(nsd), vel(nsd), prntx(nsd), shps(eNoN), remdtp
          INTEGER :: sbid(2**nsd), elid
+         LOGICAL :: collided=.false.
       END TYPE prt
       type(prt) :: prts(Np)
 
       REAL, PARAMETER :: pi=3.1415926535897932384626433
 
       REAL(KIND=8), ALLOCATABLE :: vel(:,:), pres(:), X(:,:)
-
+!End Grant Test
 
       w = 1D0/24D0
       s = (5D0 + 3D0*SQRT(5D0))/2D1
@@ -278,9 +279,9 @@
       v1=(/1,1,0/)
       v2=(/1,-2,0/)
 
-      CALL prtCollide(x1,x2,v1,v2,1D0,1D0,0.5D0,0.5D0,1D0,1D0)
-      print *, v1
-      print *, v2
+      !CALL prtCollide(x1,x2,v1,v2,1D0,1D0,0.5D0,0.5D0,1D0,1D0)
+      !print *, v1
+      !print *, v2
 
 
       !Test particle velocity
@@ -288,14 +289,23 @@
       prts(1)%vel(2)=0
       prts(1)%vel(3)=0
 
+      prts(2)%vel(1)=0
+      prts(2)%vel(2)=0
+      prts(2)%vel(3)=-3D0
+
       !Test particle position
 
       prts(1)%x(1) = 1D0
       prts(1)%x(2) = 1.5D0
       prts(1)%x(3) = 10D0
 
+      prts(2)%x(1) = 1D0
+      prts(2)%x(2) = 1.5D0
+      prts(2)%x(3) = 11D0
+
       ! split searchboxes this many times
       split = (/10,10,10/)
+      ALLOCATE(sbel(split(1)*split(2)*split(2),nEl))
 
       vel = 0D0
       !vel(3,:) = 0.1D0
@@ -305,13 +315,55 @@
       CALL xEl(sbel(prts(1)%sbid(1),:),prts(1)%x,x,prts(1)%elid,prts(1)%shps)
 
       time=0d0
-      !open(88,file='pos.txt')
-      !do a=1,10000
-      !CALL prtAdvance(prts(1)%x,prts(1)%vel,elid,shps,vel,x)
-      !write(88,*) prts(1)%vel(3)
-      !print *, prts(1)%x,prts(1)%vel(3),time
-      !end do
-      !close(88)
+      open(88,file='pos.txt')
+
+      do a=1,10000
+         do i=1,Np
+            CALL xSB(prts(i)%x,sbdim,split,prts(i)%sbid)
+            CALL xEl(sbel(prts(i)%sbid(i),:),prts(i)%x,x,prts(i)%elid,prts(i)%shps)
+            CALL prtAdvance(prts(i)%x,prts(i)%vel,prts(i)%elid,prts(i)%shps,vel,x)   
+         end do
+
+         do i=1,Np
+               ! Collisions
+            do j=1,Np
+                  if (prts(i)%collided) then
+                     EXIT
+                  end if
+
+                  !!! Should just replace inputs with prt1 and prt2. Would make way more sense
+                  !CALL prtCollide(prts(i)%x,prts(j)%x,prts(i)%vel,prts(j)%vel,0.01D0,0.01D0,0.5D0,0.5D0,1D0,0.001D0, &
+                  !& prts(i)%collided,prts(j)%collided)
+               end do
+
+               if (prts(i)%collided) then
+                  EXIT
+               end if
+
+               if (.not.(prts(i)%collided)) then
+                  prts(i)%x = 0.01D0*prts(i)%vel +prts(i)%x
+               else
+                  prts(i)%collided = .false.
+               end if
+
+            end do
+
+         ! Collided particles are already advanced, but uncollided aren't
+
+         !!! Need searchbox implementsation (shouldn't be too hard)
+
+         !!! Need to fix timestep so I can bring it into prtCollide. Should just do it in the overall program
+
+         !!! Idea: multiple collisions: get minimum tcr, do that one first
+         !!! Only advance to this collision, then make new dt = dt - tcr
+         !!! When checking for particle collisions, advance other particles by tcr
+         !!! And Boom! Should work. Will need some testing
+
+         write(88,*) prts(i)%vel(3)
+         print *, prts(1)%x,time
+      end do
+
+      close(88)
       
       print *, prts(1)%elid, prts(1)%shps
 
@@ -747,8 +799,8 @@
       ! Advance 1 Particle through flow
       SUBROUTINE prtAdvance(prtx,pvel,elid,shps,vel,x)
       IMPLICIT NONE
-      REAL(KIND=8), INTENT(INOUT) :: prtx(nsd), pvel(nsd)
-      REAL(KIND=8), INTENT(IN)    :: shps(eNoN), vel(nsd,nNo), x(nsd,nNo)
+      REAL(KIND=8), INTENT(INOUT) :: pvel(nsd)
+      REAL(KIND=8), INTENT(IN)    :: shps(eNoN), vel(nsd,nNo), x(nsd,nNo),prtx(nsd)
       INTEGER,INTENT(IN) ::   elid
       REAL(KIND=8) :: shpsp(eNoN)
       INTEGER sbidp(2**nsd),elidp, ii
@@ -777,7 +829,7 @@
 
       ! Separate into sb sizes (could be optimized here)
       do ii=1,nsd
-         sbdt(ii)=(sbdim(2*ii,1)-sbdim(2*ii-1,1))/pvel(ii)
+         sbdt(ii)=(sbdim(2*ii,1)-sbdim(2*ii-1,1))/abs(pvel(ii))
       end do
       
       ! dtp is minimum between time to travel half searchbox, 1/10 relaxation time, and maxdtp
@@ -804,7 +856,8 @@
       ! Collisions work. Just need to figure out how to change velocity of both particles
       !! Maybe get only velocities for particles, bring those out, then advance all particles through flow in
       !!    collision solver?
-      prtx = prtx + 0.5D0*dtp*(pvel+pvelpred)
+      
+      !prtx = prtx + 0.5D0*dtp*(pvel+pvelpred)
       time=time+dtp
 
       END SUBROUTINE prtAdvance
@@ -812,16 +865,20 @@
 !#################################################################### prtCollide
       ! Detects and enacts collisions
       !! Only between particles right now
-      SUBROUTINE prtCollide(x1,x2,v1,v2,dp1,dp2,m1,m2,k,dtp)
+      SUBROUTINE prtCollide(x1,x2,v1,v2,dp1,dp2,m1,m2,k,dtp,collided1,collided2)
       IMPLICIT NONE
       REAL(KIND=8), INTENT(INOUT) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd)
       REAL(KIND=8), INTENT(IN) :: dp1, dp2, m1, m2, k, dtp
+      LOGICAL, INTENT(OUT)     :: collided1, collided2
       ! Calculating distance coefficient
       REAL(KIND=8) :: a, b, c, d, e, f, qa, qb, qc, zeros(2), tcr
       REAL(KIND=8) :: n1(nsd), n2(nsd), t1(nsd), t2(nsd)
       REAL(KIND=8) :: vpar1, vpar2, vperp1, vperp2
       ! Coefficients to make calculating parallel/perp vel easier
       REAL(KIND=8) :: pa, pb
+
+      collided1 = .false.
+      collided2 = .false.
 
       ! First, check if particles will collide at current trajectory
       a = x1(1)-x2(1)
@@ -841,7 +898,7 @@
       qc = a**2D0 + c**2D0 + e**2D0 - ((dp1 + dp2)/2D0)**2D0
 
       ! Imaginary zeros means particles won't collide
-      if ((qb**2D0-4D0*qa*qc).lt.0) RETURN 
+      if ((qb**2D0-4D0*qa*qc).lt.0) RETURN
 
       ! Zeros are when the particle either enters or leaves vicinity of other particle
       zeros(1) = (-qb + sqrt(qb**2D0-4D0*qa*qc))/(2D0*qa)
@@ -849,6 +906,7 @@
 
       ! Negative zeros mean the particle would collide previously in time
       if (ANY(zeros.lt.0D0)) RETURN
+
       tcr = minval(zeros)
 
       ! Exit function if collision won't occur during timestep
@@ -889,8 +947,10 @@
       x1 = x1 + v1*(dtp - tcr)
       x2 = x2 + v2*(dtp - tcr)
 
+      collided1 = .true.
+      collided2 = .true.
+
       !!! Needs to be extended for multiple collisions per time step
-      !! Also, where do I even get information from the other particle?
 
       END SUBROUTINE prtCollide
 
