@@ -24,15 +24,23 @@
       REAL(KIND=8) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd)
 
       TYPE prt
+      ! Properties
+         REAL(KIND=8) :: mp, dp = 1D0, rhop = 1D0
+      ! Flow characteristics
          REAL(KIND=8) :: x(nsd), vel(nsd), prntx(nsd), shps(eNoN), remdtp
+      ! Searechbox/ element location
          INTEGER :: sbid(2**nsd), elid
+      ! Collisions with other particles
          LOGICAL :: collided=.false.
       END TYPE prt
+
       type(prt) :: prts(Np)
 
       REAL, PARAMETER :: pi=3.1415926535897932384626433
 
       REAL(KIND=8), ALLOCATABLE :: vel(:,:), pres(:), X(:,:)
+
+      prts%mp = pi*prts%rhop/6D0*prts%dp**3D0
 !End Grant Test
 
       w = 1D0/24D0
@@ -278,10 +286,14 @@
       x2=(/0,4,0/)
       v1=(/1,1,0/)
       v2=(/1,-2,0/)
+      prts(1)%x = x1
+      prts(2)%x = x2
+      prts(1)%vel=v1
+      prts(2)%vel=v2
 
-      !CALL prtCollide(x1,x2,v1,v2,1D0,1D0,0.5D0,0.5D0,1D0,1D0)
-      !print *, v1
-      !print *, v2
+      !CALL prtCollide(prts(1), prts(2), 1D0, 1D0)
+      !print *, prts(1)%vel
+      !print *, prts(2)%vel
 
 
       !Test particle velocity
@@ -327,28 +339,30 @@
          do i=1,Np
                ! Collisions
             do j=1,Np
-                  if (prts(i)%collided) then
-                     EXIT
-                  end if
 
-                  !!! Should just replace inputs with prt1 and prt2. Would make way more sense
-                  !CALL prtCollide(prts(i)%x,prts(j)%x,prts(i)%vel,prts(j)%vel,0.01D0,0.01D0,0.5D0,0.5D0,1D0,0.001D0, &
-                  !& prts(i)%collided,prts(j)%collided)
-               end do
-
+               ! If the particle collides and has been advanced, skip checking collisions               
                if (prts(i)%collided) then
                   EXIT
                end if
 
-               if (.not.(prts(i)%collided)) then
-                  prts(i)%x = 0.01D0*prts(i)%vel +prts(i)%x
-               else
-                  prts(i)%collided = .false.
-               end if
-
+                  ! Check if the particle collides with any other particles. Advance if so
+                  !CALL prtCollide(prts(i),prts(j),1D0,0.001)
             end do
 
-         ! Collided particles are already advanced, but uncollided aren't
+            ! Collided particles are already advanced, but uncollided aren't
+            if (prts(i)%collided) then
+               EXIT
+            end if
+
+            ! If particles haven't collided, advance by vel*dtp
+            if (.not.(prts(i)%collided)) then
+               prts(i)%x = 0.01D0*prts(i)%vel +prts(i)%x
+            else
+               prts(i)%collided = .false.
+            end if
+
+            !print *, prts(i)%x,time
+         end do
 
          !!! Need searchbox implementsation (shouldn't be too hard)
 
@@ -359,8 +373,8 @@
          !!! When checking for particle collisions, advance other particles by tcr
          !!! And Boom! Should work. Will need some testing
 
-         write(88,*) prts(i)%vel(3)
-         print *, prts(1)%x,time
+
+         write(88,*) prts(1)%vel(3)
       end do
 
       close(88)
@@ -865,11 +879,19 @@
 !#################################################################### prtCollide
       ! Detects and enacts collisions
       !! Only between particles right now
-      SUBROUTINE prtCollide(x1,x2,v1,v2,dp1,dp2,m1,m2,k,dtp,collided1,collided2)
+      !SUBROUTINE prtCollide(x1,x2,v1,v2,dp1,dp2,m1,m2,k,dtp,collided1,collided2)
+      SUBROUTINE prtCollide(prt1,prt2,k,dtp)
       IMPLICIT NONE
-      REAL(KIND=8), INTENT(INOUT) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd)
-      REAL(KIND=8), INTENT(IN) :: dp1, dp2, m1, m2, k, dtp
-      LOGICAL, INTENT(OUT)     :: collided1, collided2
+      TYPE(prt), INTENT(INOUT) :: prt1, prt2
+      REAL(KIND=8), INTENT(IN) :: k, dtp
+
+
+
+      !REAL(KIND=8), INTENT(INOUT) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd)
+      !REAL(KIND=8), INTENT(IN) :: dp1, dp2, m1, m2, k, dtp
+      !LOGICAL, INTENT(OUT)     :: collided1, collided2
+
+
       ! Calculating distance coefficient
       REAL(KIND=8) :: a, b, c, d, e, f, qa, qb, qc, zeros(2), tcr
       REAL(KIND=8) :: n1(nsd), n2(nsd), t1(nsd), t2(nsd)
@@ -877,17 +899,17 @@
       ! Coefficients to make calculating parallel/perp vel easier
       REAL(KIND=8) :: pa, pb
 
-      collided1 = .false.
-      collided2 = .false.
+      prt1%collided = .false.
+      prt1%collided = .false.
 
       ! First, check if particles will collide at current trajectory
-      a = x1(1)-x2(1)
-      b = v1(1)-v2(1)
-      c = x1(2)-x2(2)
-      d = v1(2)-v2(2)
+      a = prt1%x(1)   - prt2%x(1)
+      b = prt1%vel(1) - prt2%vel(1)
+      c = prt1%x(2)   - prt2%x(2)
+      d = prt1%vel(2) - prt2%vel(2)
       if(nsd.eq.3) then
-         e = x1(3)-x2(3)
-         f = v1(3)-v2(3)
+         e = prt1%x(3)   - prt2%x(3)
+         f = prt1%vel(3) - prt2%vel(3)
       else
          e=0D0
          f=0D0
@@ -895,7 +917,7 @@
       
       qa = b**2D0 + d**2D0 + f**2D0
       qb = 2D0*(a*b + c*d +e*f)
-      qc = a**2D0 + c**2D0 + e**2D0 - ((dp1 + dp2)/2D0)**2D0
+      qc = a**2D0 + c**2D0 + e**2D0 - ((prt1%dp + prt2%dp)/2D0)**2D0
 
       ! Imaginary zeros means particles won't collide
       if ((qb**2D0-4D0*qa*qc).lt.0) RETURN
@@ -913,44 +935,45 @@
       if (tcr.gt.dtp) RETURN
 
       ! particle locations at point of collision
-      !! This is not the most accurate right now. It could be done so you use Heun's
-      !     to tcr, then Heun's again to the end of the step. Look at later. 
-      x1 = v1*tcr + x1
-      x2 = v2*tcr + x2
+      prt1%x = prt1%vel*tcr + prt1%x
+      prt2%x = prt2%vel*tcr + prt2%x
 
       ! Vector parallel and pependicular to collision tangent line
-      n1 = (x1 - x2)/((dp1+dp2)/2)
+      n1 = (prt1%x - prt2%x)/((prt1%dp + prt2%dp)/2)
       n2 = -n1
-      t1 = cross(cross(n1,v1),n1)
-      t2 = cross(cross(n2,v2),n2)
+      t1 = cross(cross(n1,prt1%vel),n1)
+      t2 = cross(cross(n2,prt2%vel),n2)
 
       ! Get precollision parallel and perpendicular velocities
-      vperp1 = sum(t1*v1)
-      vpar1  = sum(n1*v1)
-      vperp2 = sum(t2*v2)
-      vpar2  = sum(n2*v2)
+      vperp1 = sum(t1*prt1%vel)
+      vpar1  = sum(n1*prt1%vel)
+      vperp2 = sum(t2*prt2%vel)
+      vpar2  = sum(n2*prt2%vel)
 
       ! Note that perpendicular velocities don't change, so we only need to calculate parallel
-      pa = m1*vpar1 - m2*vpar2
+      pa = prt1%mp*vpar1 - prt2%mp*vpar2
       pb = (-vpar1 - vpar2)*k
 
-      vpar2 = (pa-m1*pb)/(m1+m2)
+      vpar2 = (pa - prt1%mp*pb)/(prt1%mp + prt2%mp)
       vpar1 = pb + vpar2
       vpar2 = -vpar2
 
       ! V here is split into just two velocities, so just add them as vector
 
-      v1 = vpar1*n1 + vperp1*t1
-      v2 = vpar2*n2 + vperp2*t2
+      prt1%vel = vpar1*n1 + vperp1*t1
+      prt2%vel = vpar2*n2 + vperp2*t2
 
+      !!! Needs to be extended for multiple collisions per time step (will probably be here)
       ! Advance particle the rest of the time step at this velocity.
-      x1 = x1 + v1*(dtp - tcr)
-      x2 = x2 + v2*(dtp - tcr)
+      prt1%x = prt1%x + prt1%vel*(dtp - tcr)
+      prt2%x = prt2%x + prt2%vel*(dtp - tcr)
 
-      collided1 = .true.
-      collided2 = .true.
+      prt1%collided = .true.
+      prt2%collided = .true.
 
-      !!! Needs to be extended for multiple collisions per time step
+      prt1%remdtp = dtp-tcr
+      prt2%remdtp = dtp-tcr
+
 
       END SUBROUTINE prtCollide
 
