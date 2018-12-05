@@ -15,13 +15,11 @@
       INTEGER, ALLOCATABLE :: IEN(:,:)
       REAL, ALLOCATABLE :: tmpS(:), tmpV(:,:)
 !Grant Test
-      REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd),time!, test1(nsd),tester(nsd), test2(nsd)
+      REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd),time
       INTEGER cnt, split(nsd),j, k
-      !INTEGER, ALLOCATABLE :: sbel(:,:)
-      !REAL(KIND=8),ALLOCATABLE ::  sbdim(:,:)
 
       !prtcollide tests
-      !REAL(KIND=8) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd)
+      !REAL(KIND=8) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd), test1(nsd),tester(nsd), test2(nsd)
 
       TYPE prt
       ! Properties
@@ -32,6 +30,8 @@
          INTEGER :: sbid(2**nsd), elid, near(Np)
       ! Collisions with other particles
          LOGICAL :: collided=.false.
+      ! Restitution Coefficient
+         REAL(KIND=8) :: k
       END TYPE prt
 
       ! Collection of particles
@@ -307,24 +307,23 @@
       ! split searchboxes this many times
       split = (/10,10,10/)
       
-      !ALLOCATE(sbdom(split(1)*split(2)*split(2)))
-
-      !ALLOCATE(sbel(split(1)*split(2)*split(2),nEl))
+      ! Resititution Coefficient
+      prts%k = 1D0
 
       vel = 0D0
       vel(3,:) = 0.1D0
       
       CALL SBDomain(x,split,sbdom)
-      CALL xSB(prts(1)%x,sbdom,split,prts(1)%sbid)
-      CALL xEl(sbel(prts(1)%sbid(1),:),prts(1)%x,x,prts(1)%elid,prts(1)%shps)
+      CALL xSB(prts(1),sbdom,split)
+      CALL xEl(sbdom(prts(1)%sbid(1)),prts(1),x)
 
       time=0d0
       open(88,file='pos.txt')
 
       do a=1,10000
          do i=1,Np
-            CALL xSB(prts(i)%x,sbdim,split,prts(i)%sbid)
-            CALL xEl(sbel(prts(i)%sbid(1),:),prts(i)%x,x,prts(i)%elid,prts(i)%shps)
+            CALL xSB(prts(i),sbdom,split)
+            CALL xEl(sbdom(prts(i)%sbid(1)),prts(i),x)
             if (i.eq.2) then
                k=-1
             else
@@ -337,7 +336,7 @@
                ! Collisions
             do j=1,Np
                ! Check if the particle collides with any other particles and hasn't collided. Advance if so.
-               if ((i.ne.j).and.(.not.(prts(i)%collided))) CALL prtCollide(prts(i),prts(j),1D0,0.01D0)
+               if ((i.ne.j).and.(.not.(prts(i)%collided))) CALL prtCollide(prts(i),prts(j),0.01D0)
             end do
 
             ! If particles haven't collided, advance by vel*dtp
@@ -528,17 +527,19 @@
       END SUBROUTINE GNN
 
 !#################################################################### SBDOMAIN
-      PURE SUBROUTINE SBDomain(x,split,sbdom)
+      SUBROUTINE SBDomain(x,split,sbdom)
       REAL(KIND=8), INTENT(IN) :: x(nsd,nNo)
       INTEGER, INTENT(IN) :: split(nsd)
       TYPE(sb), INTENT(OUT), ALLOCATABLE :: sbdom(:)
       INTEGER :: ii,jj,cnt2,kk
-      !LOGICAL :: inbox(eNoN)
       INTEGER, ALLOCATABLE :: seq1(:),seq2(:),seq3(:)
       REAL(KIND=8) :: diff(nsd),step(nsd), elbox(2*nsd,nEl)
+      INTEGER, ALLOCATABLE :: sbel(:)
 
       ! dim is the dimensions of each of the search boxes, with minx,maxx,miny,maxy,minz,maxz
       ALLOCATE(sbdom(split(1)*split(2)*split(3)))
+
+      ALLOCATE(sbel(nEl))
 
       ! these sequences are just for allocating sbdim
       ALLOCATE(seq1(split(3)*split(2)),seq2(split(3)*split(1)),seq3(split(2)*split(1)))
@@ -583,35 +584,35 @@
          end do
       end do
 
-
       !! I think I might want to change the order of one of the "if (elbox(" statements below
 
       do ii=1,split(1)*split(2)*split(3)
          cnt2=1
+         sbel=0
          do jj=1,Nel
             ! Check if elements are completely outside searchbox
             do kk=1,nsd
-               ! Cycle if min value elbox .gt. max value seachbox & vice-verse
-               if (elbox(2*kk-1,jj).gt.sbdom(ii)%dim(2*kk-1)) cycle
-               if (elbox(2*kk  ,jj).gt.sbdom(ii)%dim(2*kk  )) cycle
+               ! Cycle if min value elbox .gt. max value searchbox & vice-verse
+               if (elbox(2*kk-1,jj).lt.sbdom(ii)%dim(2*kk  )) cycle
+               if (elbox(2*kk  ,jj).gt.sbdom(ii)%dim(2*kk-1)) cycle
             end do
 
-            sbdom(ii)%els(cnt2) = jj
+            sbel(cnt2) = jj
             cnt2=cnt2+1
             !end if
          end do
+         sbdom(ii)%els=sbel
       end do
       
       END SUBROUTINE SBDomain
 
 !#################################################################### XSB
       ! Find all Searchboxes x is in
-      SUBROUTINE xSB(x,sbdom,split,sbid)
+      SUBROUTINE xSB(myprt,sbdom,split)
       IMPLICIT NONE
       TYPE(sb), INTENT(IN), ALLOCATABLE :: sbdom(:)
-      REAL(KIND=8), INTENT(IN) :: x(nsd)
+      TYPE(prt), INTENT(INOUT) :: myprt
       INTEGER, INTENT(IN) :: split(nsd)
-      INTEGER, INTENT(OUT) :: sbid(2**nsd)
       REAL(KIND=8) :: step(nsd),xzero(nsd)
       INTEGER :: xsteps(nsd)
 
@@ -623,26 +624,26 @@
       step(3) = sbdom(1)%dim(6) - sbdom(1)%dim(5)
 
       ! Set domain back to zero
-      xzero(1)=x(1)-minval(sbdom%dim(1))
-      xzero(2)=x(2)-minval(sbdom%dim(3))
-      xzero(3)=x(3)-minval(sbdom%dim(5))
+      xzero(1) = myprt%x(1) - minval(sbdom%dim(1))
+      xzero(2) = myprt%x(2) - minval(sbdom%dim(3))
+      xzero(3) = myprt%x(3) - minval(sbdom%dim(5))
 
       ! Find which searchbox the particle is in
       ! Number of searchbox steps in x,y,and z
       xsteps=FLOOR(xzero/step)
       ! furthest searchbox in front
-      sbid(1)=xsteps(1)+split(1)*xsteps(2)+split(1)*split(2)*xsteps(3)+1
+      myprt%sbid(1) = xsteps(1)+split(1)*xsteps(2)+split(1)*split(2)*xsteps(3)+1
       ! previous sb in x
-      sbid(2)=sbid(1)-1
+      myprt%sbid(2) = myprt%sbid(1)-1
       ! previous sb's in y
-      sbid(3)=sbid(1)-split(1)
-      sbid(4)=sbid(3)-1
+      myprt%sbid(3) = myprt%sbid(1)-split(1)
+      myprt%sbid(4) = myprt%sbid(3)-1
       ! Next sb's in z (if available)
       if (nsd.eq.3) then
-         sbid(5)=sbid(1)-split(1)*split(2)
-         sbid(6)=sbid(5)-1
-         sbid(7)=sbid(5)-split(1)
-         sbid(8)=sbid(7)-1
+         myprt%sbid(5) = myprt%sbid(1) - split(1)*split(2)
+         myprt%sbid(6) = myprt%sbid(5) - 1
+         myprt%sbid(7) = myprt%sbid(5) - split(1)
+         myprt%sbid(8) = myprt%sbid(7) - 1
       end if
       
 
@@ -650,20 +651,18 @@
 
 !#################################################################### XEL
       ! Finds element particle of position x is in is in
-      SUBROUTINE xEl(sbel,prtx,x,elid,shps)
+      SUBROUTINE xEl(sbdom,myprt,x)
       IMPLICIT NONE
-      REAL(KIND=8), INTENT(IN) :: prtx(nsd), x(nsd,nNo)
-      INTEGER, INTENT(IN) :: sbel(nEl)
-      INTEGER, INTENT(OUT) :: elid
-      REAL(KIND=8),INTENT(OUT) :: shps(eNoN)
+      REAL(KIND=8), INTENT(IN) :: x(nsd,nNo)
+      TYPE(sb), INTENT(IN) :: sbdom
+      TYPE(prt), INTENT(INOUT) :: myprt
       INTEGER :: ii,cnt,a
-      REAL(KIND=8) :: Jac,prntx(nsd),xXi(nsd,nsd), xiX(nsd,nsd),Nx(nsd,eNoN)
+      REAL(KIND=8) :: Jac,xXi(nsd,nsd), xiX(nsd,nsd),Nx(nsd,eNoN)
       cnt=1
-      elid=0
+      myprt%elid=0
 
       do ii=1,nEl
 
-      prntx = 0D0
       xXi = 0D0
 
       IF (nsd .EQ. 2) THEN
@@ -692,9 +691,9 @@
       ELSE
 
          DO a=1, eNoN
-            xXi(:,1) = xXi(:,1) + x(:,IEN(a,sbel(ii)))*Nxi(1,a)
-            xXi(:,2) = xXi(:,2) + x(:,IEN(a,sbel(ii)))*Nxi(2,a)
-            xXi(:,3) = xXi(:,3) + x(:,IEN(a,sbel(ii)))*Nxi(3,a)
+            xXi(:,1) = xXi(:,1) + x(:,IEN(a,sbdom%els(ii)))*Nxi(1,a)
+            xXi(:,2) = xXi(:,2) + x(:,IEN(a,sbdom%els(ii)))*Nxi(2,a)
+            xXi(:,3) = xXi(:,3) + x(:,IEN(a,sbdom%els(ii)))*Nxi(3,a)
          END DO
          
          Jac = xXi(1,1)*xXi(2,2)*xXi(3,3)&
@@ -715,25 +714,25 @@
          xiX(3,3) = (xXi(1,1)*xXi(2,2) - xXi(1,2)*xXi(2,1))/Jac
          
          DO a=1, nsd
-            prntx(a) = xiX(a,1)*(prtx(1) - x(1,IEN(4,sbel(ii)))) + &
-     &                 xiX(a,2)*(prtx(2) - x(2,IEN(4,sbel(ii)))) + &
-     &                 xiX(a,3)*(prtx(3) - x(3,IEN(4,sbel(ii))))
+      myprt%prntx(a) = xiX(a,1)*(myprt%x(1) - x(1,IEN(4,sbdom%els(ii)))) + &
+     &                 xiX(a,2)*(myprt%x(2) - x(2,IEN(4,sbdom%els(ii)))) + &
+     &                 xiX(a,3)*(myprt%x(3) - x(3,IEN(4,sbdom%els(ii))))
          END DO
       END IF
 
-      shps(1)=prntx(1)
-      shps(2)=prntx(2)
-      shps(3)=prntx(3)
-      shps(4)=1-prntx(1)-prntx(2)-prntx(3)
+      myprt%shps(1) = myprt%prntx(1)
+      myprt%shps(2) = myprt%prntx(2)
+      myprt%shps(3) = myprt%prntx(3)
+      myprt%shps(4) = 1 - myprt%prntx(1) - myprt%prntx(2) - myprt%prntx(3)
 
-      IF (ALL(shps.gt.0D0)) then
-         elid=sbel(ii)
+      IF (ALL(myprt%shps.gt.0D0)) then
+         myprt%elid=sbdom%els(ii)
          EXIT
       END IF
          
       end do
 
-      if (elid.eq.0) print *, 'outside domain'
+      if (myprt%elid.eq.0) print *, 'outside domain'
 
       END SUBROUTINE xEl
 
@@ -747,8 +746,8 @@
       INTEGER ii,jj
       REAL(KIND=8), INTENT(OUT), OPTIONAL :: taupo
 
-      !Particle/fluid Parameters
-      REAL(KIND=8) :: rho, mu, dp, rhop, mp
+      !fluid Parameters
+      REAL(KIND=8) :: rho, mu
       ! Derived from flow
       REAL(KIND=8) :: fSN, magud, Rep, relvel(nsd)
 
@@ -757,14 +756,9 @@
       rho=1D0
       ! Fluid viscosity
       mu=0.01D0
-      ! Particle diameter
-      dp=0.1D0
-      ! Particle Density
-      rhop=1D0
-      ! Particle mass
-      mp=pi*rho/6D0*dp**3D0
+
       ! Particle relaxation time
-      taup=myprt%rhop*myprt%dp**2D0/mu/18D0
+      taup=myprt%rhop * myprt%dp**2D0/mu/18D0
       if (present(taupo)) taupo=taup
 
       ! Interpolate velocity at particle point
@@ -780,7 +774,7 @@
       ! Relative velocity magnitude
       magud = SUM(relvel**2D0)**0.5D0
       ! Reynolds Number
-      Rep = dp*magud*rhop/mu
+      Rep = myprt%dp*magud*myprt%rhop/mu
       ! Schiller-Neumann (finite Re) correction
       fSN = 1D0 + 0.15D0*Rep**0.687D0
       ! Stokes corrected drag force
@@ -795,8 +789,7 @@
       TYPE(prt), INTENT(INOUT) :: myprt
       TYPE(prt) :: tmpprt
       REAL(KIND=8), INTENT(IN) :: vel(nsd,nNo), x(nsd,nNo)
-      REAL(KIND=8) :: shpsp(eNoN)
-      INTEGER sbidp(2**nsd),elidp, ii
+      INTEGER ii
 
       !Particle/fluid Parameters
       REAL(KIND=8) :: g(nsd), rho, dtp,maxdtp,sbdt(nsd)
@@ -822,7 +815,7 @@
 
       ! Separate into sb sizes (could be optimized here)
       do ii=1,nsd
-         sbdt(ii)=(sbdim(2*ii,1)-sbdim(2*ii-1,1))/abs(myprt%vel(ii))
+         sbdt(ii)=(sbdom(1)%dim(2*ii)-sbdom(1)%dim(2*ii-1))/abs(myprt%vel(ii))
       end do
       
       ! dtp is minimum between time to travel half searchbox, 1/10 relaxation time, and maxdtp
@@ -840,10 +833,8 @@
       tmpprt%vel = pvelpred
       tmpprt%x   = prtxpred
 
-      CALL xSB(prtxpred,sbdim,split,sbidp)
-      CALL xEl(sbel(sbidp(1),:),prtxpred,x,elidp,shpsp)
-      tmpprt%elid = elidp
-      tmpprt%shps = shpsp
+      CALL xSB(tmpprt,sbdom,split)
+      CALL xEl(sbdom(tmpprt%sbid(1)),tmpprt,x)
       CALL prtDrag(tmpprt,vel,apdpred)
 
       apTpred = apdpred + g*(1D0 - rho/myprt%rhop)
@@ -860,21 +851,13 @@
 
       END SUBROUTINE prtAdvance
 
-!#################################################################### prtCollide
+!#################################################################### PRTCOLLIDE
       ! Detects and enacts collisions
       !! Only between particles right now
-      !SUBROUTINE prtCollide(x1,x2,v1,v2,dp1,dp2,m1,m2,k,dtp,collided1,collided2)
-      SUBROUTINE prtCollide(prt1,prt2,k,dtp)
+      SUBROUTINE prtCollide(prt1,prt2,dtp)
       IMPLICIT NONE
       TYPE(prt), INTENT(INOUT) :: prt1, prt2
-      REAL(KIND=8), INTENT(IN) :: k, dtp
-
-
-
-      !REAL(KIND=8), INTENT(INOUT) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd)
-      !REAL(KIND=8), INTENT(IN) :: dp1, dp2, m1, m2, k, dtp
-      !LOGICAL, INTENT(OUT)     :: collided1, collided2
-
+      REAL(KIND=8), INTENT(IN) :: dtp
 
       ! Calculating distance coefficient
       REAL(KIND=8) :: a, b, c, d, e, f, qa, qb, qc, zeros(2), tcr
@@ -940,7 +923,7 @@
 
       ! Note that perpendicular velocities don't change, so we only need to calculate parallel
       pa = prt1%mp*vpar1 - prt2%mp*vpar2
-      pb = (-vpar1 - vpar2)*k
+      pb = (-vpar1 - vpar2)*prt1%k
 
       vpar2 = (pa - prt1%mp*pb)/(prt1%mp + prt2%mp)
       vpar1 = pb + vpar2
