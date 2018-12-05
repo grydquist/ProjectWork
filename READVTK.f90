@@ -17,8 +17,8 @@
 !Grant Test
       REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd),time!, test1(nsd),tester(nsd), test2(nsd)
       INTEGER cnt, split(nsd),j, k
-      INTEGER, ALLOCATABLE :: sbel(:,:)
-      REAL(KIND=8),ALLOCATABLE ::  sbdim(:,:)
+      !INTEGER, ALLOCATABLE :: sbel(:,:)
+      !REAL(KIND=8),ALLOCATABLE ::  sbdim(:,:)
 
       !prtcollide tests
       !REAL(KIND=8) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd)
@@ -39,7 +39,7 @@
 
       TYPE sb
       ! Searchbox dimensions
-         REAL(KIND=8) :: dims(nsd*2)
+         REAL(KIND=8) :: dim(nsd*2)
       ! Elements contained in searchbox
          INTEGER, ALLOCATABLE :: els(:)
       END TYPE sb
@@ -307,15 +307,15 @@
       ! split searchboxes this many times
       split = (/10,10,10/)
       
-      ALLOCATE(sbdom(split(1)*split(2)*split(2)))
+      !ALLOCATE(sbdom(split(1)*split(2)*split(2)))
 
-      ALLOCATE(sbel(split(1)*split(2)*split(2),nEl))
+      !ALLOCATE(sbel(split(1)*split(2)*split(2),nEl))
 
       vel = 0D0
       vel(3,:) = 0.1D0
       
-      CALL SBDomain(x,split,sbel,sbdim)
-      CALL xSB(prts(1)%x,sbdim,split,prts(1)%sbid)
+      CALL SBDomain(x,split,sbdom)
+      CALL xSB(prts(1)%x,sbdom,split,prts(1)%sbid)
       CALL xEl(sbel(prts(1)%sbid(1),:),prts(1)%x,x,prts(1)%elid,prts(1)%shps)
 
       time=0d0
@@ -528,22 +528,17 @@
       END SUBROUTINE GNN
 
 !#################################################################### SBDOMAIN
-      PURE SUBROUTINE SBDomain(x,split,sbel,sbdim)
+      PURE SUBROUTINE SBDomain(x,split,sbdom)
       REAL(KIND=8), INTENT(IN) :: x(nsd,nNo)
       INTEGER, INTENT(IN) :: split(nsd)
-      REAL(KIND=8), INTENT(OUT),ALLOCATABLE :: sbdim(:,:)
-      INTEGER, INTENT(OUT), ALLOCATABLE :: sbel(:,:)
+      TYPE(sb), INTENT(OUT), ALLOCATABLE :: sbdom(:)
       INTEGER :: ii,jj,cnt2,kk
       !LOGICAL :: inbox(eNoN)
       INTEGER, ALLOCATABLE :: seq1(:),seq2(:),seq3(:)
       REAL(KIND=8) :: diff(nsd),step(nsd), elbox(2*nsd,nEl)
 
-      ! sbdim is the dimensions of each of the search boxes, with minx,maxx,miny,maxy,minz,maxz
-      ALLOCATE(sbdim(nsd*2,split(1)*split(2)*split(3)))
-      sbdim=0D0
-      ! sbel is the id of the elements with a searchbox
-      ALLOCATE(sbel(split(1)*split(2)*split(3),nEl))
-      sbel=0D0
+      ! dim is the dimensions of each of the search boxes, with minx,maxx,miny,maxy,minz,maxz
+      ALLOCATE(sbdom(split(1)*split(2)*split(3)))
 
       ! these sequences are just for allocating sbdim
       ALLOCATE(seq1(split(3)*split(2)),seq2(split(3)*split(1)),seq3(split(2)*split(1)))
@@ -565,20 +560,20 @@
 
       ! Allocating sbdim, such that they overlap by 50%
       do ii=1,split(1)
-         sbdim(1,seq1+ii-1)=MINVAL(x(1,:))+step(1)*(ii-1)/2
+         sbdom(seq1+ii-1)%dim(1)=MINVAL(x(1,:))+step(1)*(ii-1)/2
       end do
 
       do ii=1,split(2)
-         sbdim(3,seq2+(ii-1)*split(1))=MINVAL(x(2,:))+step(2)*(ii-1)/2
+         sbdom(seq2+(ii-1)*split(1))%dim(3)=MINVAL(x(2,:))+step(2)*(ii-1)/2
       end do
 
       do ii=1,split(3)
-         sbdim(5,seq3+(ii-1)*split(1)*split(2))=MINVAL(x(3,:))+step(3)*(ii-1)/2
+         sbdom(seq3+(ii-1)*split(1)*split(2))%dim(5)=MINVAL(x(3,:))+step(3)*(ii-1)/2
       end do
 
-      sbdim(2,:)=sbdim(1,:)+step(1)
-      sbdim(4,:)=sbdim(3,:)+step(2)
-      sbdim(6,:)=sbdim(5,:)+step(3)
+      sbdom%dim(2)=sbdom%dim(1)+step(1)
+      sbdom%dim(4)=sbdom%dim(3)+step(2)
+      sbdom%dim(6)=sbdom%dim(5)+step(3)
 
       ! Making boxes surrounding elements
       do ii=1,Nel
@@ -588,25 +583,20 @@
          end do
       end do
 
+
+      !! I think I might want to change the order of one of the "if (elbox(" statements below
+
       do ii=1,split(1)*split(2)*split(3)
          cnt2=1
          do jj=1,Nel
             ! Check if elements are completely outside searchbox
             do kk=1,nsd
                ! Cycle if min value elbox .gt. max value seachbox & vice-verse
-               if (elbox(2*kk-1,jj).gt.sbdim(2*kk-1,ii)) cycle
-               if (elbox(2*kk  ,jj).gt.sbdim(2*kk  ,ii)) cycle
+               if (elbox(2*kk-1,jj).gt.sbdom(ii)%dim(2*kk-1)) cycle
+               if (elbox(2*kk  ,jj).gt.sbdom(ii)%dim(2*kk  )) cycle
             end do
 
-            ! Old, dated method
-
-            ! Checks if node values of element jj is in searchbox ii
-            !inbox=((x(1,IEN(:,jj)).gt.sbdim(1,ii)).and.(x(1,IEN(:,jj)).lt.sbdim(2,ii)).and. &
-            !          &   (x(2,IEN(:,jj)).gt.sbdim(3,ii)).and.(x(2,IEN(:,jj)).lt.sbdim(4,ii)).and. &
-            !          &   (x(3,IEN(:,jj)).gt.sbdim(5,ii)).and.(x(3,IEN(:,jj)).lt.sbdim(6,ii))) 
-            ! Puts element into searchbox 
-            !if (any(inbox)) then
-            sbel(ii,cnt2) = jj
+            sbdom(ii)%els(cnt2) = jj
             cnt2=cnt2+1
             !end if
          end do
@@ -616,9 +606,9 @@
 
 !#################################################################### XSB
       ! Find all Searchboxes x is in
-      SUBROUTINE xSB(x,sbdim,split,sbid)
+      SUBROUTINE xSB(x,sbdom,split,sbid)
       IMPLICIT NONE
-      REAL(KIND=8), INTENT(IN),ALLOCATABLE:: sbdim(:,:)
+      TYPE(sb), INTENT(IN), ALLOCATABLE :: sbdom(:)
       REAL(KIND=8), INTENT(IN) :: x(nsd)
       INTEGER, INTENT(IN) :: split(nsd)
       INTEGER, INTENT(OUT) :: sbid(2**nsd)
@@ -626,14 +616,16 @@
       INTEGER :: xsteps(nsd)
 
       ! Searchbox dimensions
-      step(1)=sbdim(2,1)-sbdim(1,1)
-      step(2)=sbdim(4,1)-sbdim(3,1)
-      step(3)=sbdim(6,1)-sbdim(5,1)
+
+      !! add in steps to sb type
+      step(1) = sbdom(1)%dim(2) - sbdom(1)%dim(1)
+      step(2) = sbdom(1)%dim(4) - sbdom(1)%dim(3)
+      step(3) = sbdom(1)%dim(6) - sbdom(1)%dim(5)
 
       ! Set domain back to zero
-      xzero(1)=x(1)-minval(sbdim(1,:))
-      xzero(2)=x(2)-minval(sbdim(3,:))
-      xzero(3)=x(3)-minval(sbdim(5,:))
+      xzero(1)=x(1)-minval(sbdom%dim(1))
+      xzero(2)=x(2)-minval(sbdom%dim(3))
+      xzero(3)=x(3)-minval(sbdom%dim(5))
 
       ! Find which searchbox the particle is in
       ! Number of searchbox steps in x,y,and z
