@@ -15,7 +15,7 @@
       INTEGER, ALLOCATABLE :: IEN(:,:)
       REAL, ALLOCATABLE :: tmpS(:), tmpV(:,:)
 !Grant Test
-      REAL(KIND=8) :: xg(nsd,eNoN), Nx(nsd,eNoN), Jac, ks(nsd,nsd),time
+      REAL(KIND=8) :: time
       INTEGER cnt, split(nsd),j, k
 
       !prtcollide tests
@@ -38,6 +38,8 @@
       type(prt) :: prts(Np)
 
       TYPE sb
+      ! Size of searchbox
+         REAL(KIND=8) :: step(nsd)
       ! Searchbox dimensions
          REAL(KIND=8) :: dim(nsd*2)
       ! Elements contained in searchbox
@@ -311,7 +313,7 @@
       prts%k = 1D0
 
       vel = 0D0
-      vel(3,:) = 0.1D0
+      vel(3,:) = 0.4D0
       
       CALL SBDomain(x,split,sbdom)
       CALL xSB(prts(1),sbdom,split)
@@ -364,17 +366,6 @@
       end do
 
       close(88)
-
-      do a=1,nEl
-      xg(:,1) = x(:,IEN(1,a))
-      xg(:,2) = x(:,IEN(2,a))
-      xg(:,3) = x(:,IEN(3,a))
-      xg(:,4) = x(:,IEN(4,a))
-      CALL GNN(xg,Nx,Jac,ks,prts(1)%prntx,prts(1)%x,prts(1)%shps)
-      if ((ALL(prts(1)%shps.gt.0))) EXIT
-      cnt=cnt+1
-      end do
-      print *, cnt,prts(1)%shps
       
       STOP 
  001  STOP "A block of data is missing"
@@ -533,7 +524,7 @@
       TYPE(sb), INTENT(OUT), ALLOCATABLE :: sbdom(:)
       INTEGER :: ii,jj,cnt2,kk
       INTEGER, ALLOCATABLE :: seq1(:),seq2(:),seq3(:)
-      REAL(KIND=8) :: diff(nsd),step(nsd), elbox(2*nsd,nEl)
+      REAL(KIND=8) :: diff(nsd), elbox(2*nsd,nEl)
       INTEGER, ALLOCATABLE :: sbel(:)
 
       ! dim is the dimensions of each of the search boxes, with minx,maxx,miny,maxy,minz,maxz
@@ -549,7 +540,9 @@
       diff(2)=MAXVAL(x(2,:))-MINVAL(x(2,:))
       diff(3)=MAXVAL(x(3,:))-MINVAL(x(3,:))
       ! Size of sb
-      step=diff/((split+1)/2)
+      do ii = 1,(split(2)*split(2)*split(3))
+         sbdom(ii)%step=diff/((split+1)/2)
+      end do
 
       seq1=(/(ii, ii=0, split(2)*split(3)-1, 1)/)*split(1)+1
       cnt2=0
@@ -561,20 +554,20 @@
 
       ! Allocating sbdim, such that they overlap by 50%
       do ii=1,split(1)
-         sbdom(seq1+ii-1)%dim(1)=MINVAL(x(1,:))+step(1)*(ii-1)/2
+         sbdom(seq1+ii-1)%dim(1) = MINVAL(x(1,:)) + sbdom(1)%step(1)*(ii-1)/2
       end do
 
       do ii=1,split(2)
-         sbdom(seq2+(ii-1)*split(1))%dim(3)=MINVAL(x(2,:))+step(2)*(ii-1)/2
+         sbdom(seq2+(ii-1)*split(1))%dim(3) = MINVAL(x(2,:)) + sbdom(1)%step(2)*(ii-1)/2
       end do
 
       do ii=1,split(3)
-         sbdom(seq3+(ii-1)*split(1)*split(2))%dim(5)=MINVAL(x(3,:))+step(3)*(ii-1)/2
+         sbdom(seq3+(ii-1)*split(1)*split(2))%dim(5)=MINVAL(x(3,:))+sbdom(1)%step(3)*(ii-1)/2
       end do
 
-      sbdom%dim(2)=sbdom%dim(1)+step(1)
-      sbdom%dim(4)=sbdom%dim(3)+step(2)
-      sbdom%dim(6)=sbdom%dim(5)+step(3)
+      sbdom%dim(2) = sbdom%dim(1) + sbdom(1)%step(1)
+      sbdom%dim(4) = sbdom%dim(3) + sbdom(1)%step(2)
+      sbdom%dim(6) = sbdom%dim(5) + sbdom(1)%step(3)
 
       ! Making boxes surrounding elements
       do ii=1,Nel
@@ -583,8 +576,6 @@
             elbox(2*jj  ,ii) = MAXVAL(x(jj,IEN(:,ii)))
          end do
       end do
-
-      !! I think I might want to change the order of one of the "if (elbox(" statements below
 
       do ii=1,split(1)*split(2)*split(3)
          cnt2=1
@@ -613,15 +604,8 @@
       TYPE(sb), INTENT(IN), ALLOCATABLE :: sbdom(:)
       TYPE(prt), INTENT(INOUT) :: myprt
       INTEGER, INTENT(IN) :: split(nsd)
-      REAL(KIND=8) :: step(nsd),xzero(nsd)
+      REAL(KIND=8) :: xzero(nsd)
       INTEGER :: xsteps(nsd)
-
-      ! Searchbox dimensions
-
-      !! add in steps to sb type
-      step(1) = sbdom(1)%dim(2) - sbdom(1)%dim(1)
-      step(2) = sbdom(1)%dim(4) - sbdom(1)%dim(3)
-      step(3) = sbdom(1)%dim(6) - sbdom(1)%dim(5)
 
       ! Set domain back to zero
       xzero(1) = myprt%x(1) - minval(sbdom%dim(1))
@@ -630,7 +614,7 @@
 
       ! Find which searchbox the particle is in
       ! Number of searchbox steps in x,y,and z
-      xsteps=FLOOR(xzero/step)
+      xsteps=FLOOR(xzero/sbdom(1)%step)
       ! furthest searchbox in front
       myprt%sbid(1) = xsteps(1)+split(1)*xsteps(2)+split(1)*split(2)*xsteps(3)+1
       ! previous sb in x

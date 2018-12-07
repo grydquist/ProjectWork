@@ -14,13 +14,15 @@ z=z/2;
 
 hold off
 for i=1:length(cell)/6
-  axis([-1,1,-.2,1.2,10,11.5])
+  axis([-2,2,-2,2,8.5,12.5])
   pbaspect([1,1,1])
   %view(90,0)
   hold on;
   
-  surf(x+cell(i*6-5),y+cell(i*6-4),z+cell(i*6-3))
-  surf(x+cell(i*6-2),y+cell(i*6-1),z+cell(i*6))
+  surf(x+cell(i*6-5),y+cell(i*6-4),z+cell(i*6-3),'facecolor', 'r', 'edgealpha', 0)
+  surf(x+cell(i*6-2),y+cell(i*6-1),z+cell(i*6),'facecolor', 'b', 'edgealpha', 0)
+  light;
+    lighting gouraud;
   
   %plot3(cell(i*6-5),cell(i*6-4),cell(i*6-3),'or');
   %plot3(cell(i*6-2),cell(i*6-1),cell(i*6),'or');
