@@ -20,6 +20,7 @@
 
       !prtcollide tests
       !REAL(KIND=8) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd), test1(nsd),tester(nsd), test2(nsd)
+      REAL(KIND=8) ::test(nsd)
 
       TYPE prt
       ! Properties
@@ -286,6 +287,11 @@
       !ALLOCATE(pGrad(nsd,nNo))
       IEN=IEN+1
       cnt=1
+
+      ! Test interp
+
+      Call INTERP((/.0001D0,-1.11D0,6.841D0/),x(:,IEN(:,2)),test)
+      print *, test 
 
       !Test particle velocity
       prts(1)%vel(1)=0
@@ -673,13 +679,16 @@
 
 
       ELSE
+      ! 3D case
 
+      ! Setting up matrix to be inverted
          DO a=1, eNoN
             xXi(:,1) = xXi(:,1) + x(:,IEN(a,sbdom%els(ii)))*Nxi(1,a)
             xXi(:,2) = xXi(:,2) + x(:,IEN(a,sbdom%els(ii)))*Nxi(2,a)
             xXi(:,3) = xXi(:,3) + x(:,IEN(a,sbdom%els(ii)))*Nxi(3,a)
          END DO
          
+      ! Inverting matrix
          Jac = xXi(1,1)*xXi(2,2)*xXi(3,3)&
      &       + xXi(1,2)*xXi(2,3)*xXi(3,1)&
      &       + xXi(1,3)*xXi(2,1)*xXi(3,2)&
@@ -697,6 +706,7 @@
          xiX(3,2) = (xXi(3,1)*xXi(1,2) - xXi(3,2)*xXi(1,1))/Jac
          xiX(3,3) = (xXi(1,1)*xXi(2,2) - xXi(1,2)*xXi(2,1))/Jac
          
+      ! Finding particle coordinates in parent coordinate system
          DO a=1, nsd
       myprt%prntx(a) = xiX(a,1)*(myprt%x(1) - x(1,IEN(4,sbdom%els(ii)))) + &
      &                 xiX(a,2)*(myprt%x(2) - x(2,IEN(4,sbdom%els(ii)))) + &
@@ -704,11 +714,13 @@
          END DO
       END IF
 
+      ! Finding shape function values at particle coordinates
       myprt%shps(1) = myprt%prntx(1)
       myprt%shps(2) = myprt%prntx(2)
       myprt%shps(3) = myprt%prntx(3)
       myprt%shps(4) = 1 - myprt%prntx(1) - myprt%prntx(2) - myprt%prntx(3)
 
+      ! Checking if all shape functions are positive
       IF (ALL(myprt%shps.gt.0D0)) then
          myprt%elid=sbdom%els(ii)
          EXIT
@@ -716,6 +728,8 @@
          
       end do
 
+      ! If it loops through everything and doesn't yield a positive shape function,
+      ! the particle is outside the domain
       if (myprt%elid.eq.0) print *, 'outside domain'
 
       END SUBROUTINE xEl
@@ -950,14 +964,15 @@
 
 !#################################################################### INTERP
       ! Finds element particle of position x is in is in
-      SUBROUTINE INTERP(x,xpt,uin,u)
+      SUBROUTINE INTERP(xpt,uin,u)
       IMPLICIT NONE
-      REAL(KIND=8), INTENT(IN) :: x(nsd,eNoN), xpt(nsd), uin(nsd,eNoN)
+      REAL(KIND=8), INTENT(IN) :: xpt(nsd), uin(nsd,eNoN)
       REAL(KIND=8), INTENT(OUT):: u(nsd)
       INTEGER :: ii,jj,a
       REAL(KIND=8) :: Jac,xXi(nsd,nsd), xiX(nsd,nsd),Nx(nsd,eNoN), &
        &               Nxi(nsd,eNoN), shps(eNoN), prntx(nsd)
     
+       ! Setting up matrix for inversion
       Nxi(1,1) =  1D0
       Nxi(2,1) =  0D0
       Nxi(3,1) =  0D0
@@ -973,7 +988,7 @@
 
       xXi = 0D0
 
-      u = 0D0
+      do ii=1,nEl
 
       IF (nsd .EQ. 2) THEN
       !
@@ -998,14 +1013,16 @@
          END DO
 
 
+      ! 3D case
       ELSE
 
          DO a=1, eNoN
-            xXi(:,1) = xXi(:,1) + x(:,a)*Nxi(1,a)
-            xXi(:,2) = xXi(:,2) + x(:,a)*Nxi(2,a)
-            xXi(:,3) = xXi(:,3) + x(:,a)*Nxi(3,a)
+            xXi(:,1) = xXi(:,1) + x(:,IEN(a,(ii)))*Nxi(1,a)
+            xXi(:,2) = xXi(:,2) + x(:,IEN(a,(ii)))*Nxi(2,a)
+            xXi(:,3) = xXi(:,3) + x(:,IEN(a,(ii)))*Nxi(3,a)
          END DO
          
+      ! Inverting matrix
          Jac = xXi(1,1)*xXi(2,2)*xXi(3,3)&
      &       + xXi(1,2)*xXi(2,3)*xXi(3,1)&
      &       + xXi(1,3)*xXi(2,1)*xXi(3,2)&
@@ -1023,27 +1040,31 @@
          xiX(3,2) = (xXi(3,1)*xXi(1,2) - xXi(3,2)*xXi(1,1))/Jac
          xiX(3,3) = (xXi(1,1)*xXi(2,2) - xXi(1,2)*xXi(2,1))/Jac
          
+         ! Finding coordinates in parent domain
          DO a=1, nsd
-       prntx(a) =      xiX(a,1)*( xpt(1) - x(1,a)) + &
-     &                 xiX(a,2)*( xpt(2) - x(2,a)) + &
-     &                 xiX(a,3)*( xpt(3) - x(3,a))
+       prntx(a) =      xiX(a,1)*( xpt(1) - x(1,IEN(4,ii))) + &
+     &                 xiX(a,2)*( xpt(2) - x(2,IEN(4,ii))) + &
+     &                 xiX(a,3)*( xpt(3) - x(3,IEN(4,ii)))
          END DO
       END IF
 
+      ! Finding shape functions
        shps(1) =  prntx(1)
        shps(2) =  prntx(2)
        shps(3) =  prntx(3)
        shps(4) = 1 -  prntx(1) -  prntx(2) -  prntx(3)
+      print *, shps
+       ! Using shape functions to interpolate value at coordinate
+     
+   end do
 
-     do ii=1,nsd
-        do jj=1,eNoN
-           u(ii) = u(ii) + uin(ii,jj)*shps(jj)
-        end do
-     end do
+   do ii=1,nsd
+      do jj=1,eNoN
+         u(ii) = u(ii) + uin(ii,jj)*shps(jj)
+      end do
+   end do
          
       END SUBROUTINE INTERP
-
-
 
 
       END PROGRAM READVTK
