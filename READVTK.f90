@@ -20,7 +20,7 @@
 
       !prtcollide tests
       !REAL(KIND=8) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd), test1(nsd),tester(nsd), test2(nsd)
-      REAL(KIND=8) ::test(nsd)
+      !REAL(KIND=8) ::test,test2(nsd)
 
       TYPE prt
       ! Properties
@@ -289,9 +289,7 @@
       cnt=1
 
       ! Test interp
-
-      Call INTERP((/.0001D0,-1.11D0,6.841D0/),x(:,IEN(:,2)),test)
-      print *, test 
+      !Call INTERP((/-0.49D0,-1.52D0,6.84D0/),test,test2)!x(:,IEN(:,2)),test)84
 
       !Test particle velocity
       prts(1)%vel(1)=0
@@ -373,7 +371,7 @@
 
       close(88)
       
-      STOP 
+      STOP
  001  STOP "A block of data is missing"
 
       CONTAINS
@@ -546,7 +544,7 @@
       diff(2)=MAXVAL(x(2,:))-MINVAL(x(2,:))
       diff(3)=MAXVAL(x(3,:))-MINVAL(x(3,:))
       ! Size of sb
-      do ii = 1,(split(2)*split(2)*split(3))
+      do ii = 1,(split(1)*split(2)*split(3))
          sbdom(ii)%step=diff/((split+1)/2)
       end do
 
@@ -964,10 +962,10 @@
 
 !#################################################################### INTERP
       ! Finds element particle of position x is in is in
-      SUBROUTINE INTERP(xpt,uin,u)
+      SUBROUTINE INTERP(xpt,pint,uint)
       IMPLICIT NONE
-      REAL(KIND=8), INTENT(IN) :: xpt(nsd), uin(nsd,eNoN)
-      REAL(KIND=8), INTENT(OUT):: u(nsd)
+      REAL(KIND=8), INTENT(IN) :: xpt(nsd)
+      REAL(KIND=8), INTENT(OUT):: pint, uint(nsd)
       INTEGER :: ii,jj,a
       REAL(KIND=8) :: Jac,xXi(nsd,nsd), xiX(nsd,nsd),Nx(nsd,eNoN), &
        &               Nxi(nsd,eNoN), shps(eNoN), prntx(nsd)
@@ -981,12 +979,14 @@
       Nxi(3,2) =  0D0
       Nxi(1,3) =  0D0
       Nxi(2,3) =  0D0
-      Nxi(3,3) =  1D0
+      Nxi(3,3) =  1D02
       Nxi(1,4) = -1D0
       Nxi(2,4) = -1D0
       Nxi(3,4) = -1D0
 
       xXi = 0D0
+      pint = 0D0
+      uint = 0D0
 
       do ii=1,nEl
 
@@ -1017,9 +1017,9 @@
       ELSE
 
          DO a=1, eNoN
-            xXi(:,1) = xXi(:,1) + x(:,IEN(a,(ii)))*Nxi(1,a)
-            xXi(:,2) = xXi(:,2) + x(:,IEN(a,(ii)))*Nxi(2,a)
-            xXi(:,3) = xXi(:,3) + x(:,IEN(a,(ii)))*Nxi(3,a)
+            xXi(:,1) = xXi(:,1) + x(:,IEN(a,ii))*Nxi(1,a)
+            xXi(:,2) = xXi(:,2) + x(:,IEN(a,ii))*Nxi(2,a)
+            xXi(:,3) = xXi(:,3) + x(:,IEN(a,ii))*Nxi(3,a)
          END DO
          
       ! Inverting matrix
@@ -1053,18 +1053,20 @@
        shps(2) =  prntx(2)
        shps(3) =  prntx(3)
        shps(4) = 1 -  prntx(1) -  prntx(2) -  prntx(3)
-      print *, shps
-       ! Using shape functions to interpolate value at coordinate
-     
-   end do
+      ! If shape functions positive, we've found the correct element
+      IF (ALL(shps.gt.0D0)) then
+         EXIT
+      END IF
 
-   do ii=1,nsd
-      do jj=1,eNoN
-         u(ii) = u(ii) + uin(ii,jj)*shps(jj)
-      end do
+   end do
+   
+   ! Using shape functions to interpolate value at coordinate
+   do jj=1,eNoN
+      pint = pint + pres(IEN(jj,ii))*shps(jj)
+      uint = uint +vel(:,IEN(jj,ii))*shps(jj)
    end do
          
-      END SUBROUTINE INTERP
+   END SUBROUTINE INTERP
 
 
-      END PROGRAM READVTK
+   END PROGRAM READVTK
