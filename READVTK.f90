@@ -584,19 +584,19 @@
       do ii=1,split(1)*split(2)*split(3)
          cnt2=1
          sbel=0
-         do jj=1,Nel
+         outer: do jj=1,Nel
             ! Check if elements are completely outside searchbox
-            do kk=1,nsd
+            inner: do kk=1,nsd
                ! Cycle if min value elbox .gt. max value searchbox & vice-verse
-               if (elbox(2*kk-1,jj).lt.sbdom(ii)%dim(2*kk  )) cycle
-               if (elbox(2*kk  ,jj).gt.sbdom(ii)%dim(2*kk-1)) cycle
-            end do
+               if (elbox(2*kk-1,jj).gt.sbdom(ii)%dim(2*kk  )) cycle outer
+               if (elbox(2*kk  ,jj).lt.sbdom(ii)%dim(2*kk-1)) cycle outer
+            enddo inner
 
             sbel(cnt2) = jj
             cnt2=cnt2+1
-            !end if
-         end do
-         sbdom(ii)%els=sbel
+         enddo outer
+         ALLOCATE(sbdom(ii)%els(cnt2-1))
+         sbdom(ii)%els=sbel(1:cnt2-1)
       end do
       
       END SUBROUTINE SBDomain
@@ -618,7 +618,7 @@
 
       ! Find which searchbox the particle is in
       ! Number of searchbox steps in x,y,and z
-      xsteps=FLOOR(xzero/sbdom(1)%step)
+      xsteps=FLOOR(2*xzero/sbdom(1)%step)
       ! furthest searchbox in front
       myprt%sbid(1) = xsteps(1)+split(1)*xsteps(2)+split(1)*split(2)*xsteps(3)+1
       ! previous sb in x
@@ -633,8 +633,7 @@
          myprt%sbid(7) = myprt%sbid(5) - split(1)
          myprt%sbid(8) = myprt%sbid(7) - 1
       end if
-      
-
+      RETURN
       END SUBROUTINE xSB
 
 !#################################################################### XEL
@@ -648,11 +647,12 @@
       REAL(KIND=8) :: Jac,xXi(nsd,nsd), xiX(nsd,nsd),Nx(nsd,eNoN)
       cnt=1
       myprt%elid=0
+      IF (size(sbdom%els).eq.0) RETURN
 
-      do ii=1,nEl
+      do ii=1,size(sbdom%els)
 
       xXi = 0D0
-
+      
       IF (nsd .EQ. 2) THEN
       !
       ! 2D not done
@@ -719,7 +719,7 @@
       myprt%shps(4) = 1 - myprt%prntx(1) - myprt%prntx(2) - myprt%prntx(3)
 
       ! Checking if all shape functions are positive
-      IF (ALL(myprt%shps.gt.0D0)) then
+      IF (ALL(myprt%shps.ge.0D0)) then
          myprt%elid=sbdom%els(ii)
          EXIT
       END IF
@@ -728,7 +728,10 @@
 
       ! If it loops through everything and doesn't yield a positive shape function,
       ! the particle is outside the domain
-      if (myprt%elid.eq.0) print *, 'outside domain'
+      if (myprt%elid.eq.0) THEN
+         print *, 'outside domain'
+         !print *, minval
+      end if
 
       END SUBROUTINE xEl
 
