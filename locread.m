@@ -1,5 +1,11 @@
 fileid=fopen('pos.txt');
 cell=fscanf(fileid,'%f');
+x1=cell(1:6:end);
+y1=cell(2:6:end);
+z1=cell(3:6:end);
+x2=cell(4:6:end);
+y2=cell(5:6:end);
+z2=cell(6:6:end);
 plot3(cell(1:6:end),cell(2:6:end),cell(3:6:end))
 hold on
 %plot(cell(3:6:end))
@@ -13,23 +19,23 @@ y=y/2;
 z=z/2;
 
 hold off
-for i=1:length(cell)/6
-  axis([-2,2,-2,2,8.5,12.5])
-  pbaspect([1,1,1])
-  %view(90,0)
-  hold on;
-  
-  surf(x+cell(i*6-5),y+cell(i*6-4),z+cell(i*6-3),'facecolor', 'r', 'edgealpha', 0)
-  surf(x+cell(i*6-2),y+cell(i*6-1),z+cell(i*6),'facecolor', 'b', 'edgealpha', 0)
-  light;
-    lighting gouraud;
-  
-  %plot3(cell(i*6-5),cell(i*6-4),cell(i*6-3),'or');
-  %plot3(cell(i*6-2),cell(i*6-1),cell(i*6),'or');
-  
-  pause(0.01);
-
-  clf;
-end
+% for i=1:length(cell)/6
+%   axis([-2,2,-2,2,8.5,12.5])
+%   pbaspect([1,1,1])
+%   view(90,0)
+%   hold on;
+%   
+%   surf(x+cell(i*6-5),y+cell(i*6-4),z+cell(i*6-3),'facecolor', 'r', 'edgealpha', 0)
+%   surf(x+cell(i*6-2),y+cell(i*6-1),z+cell(i*6),'facecolor', 'b', 'edgealpha', 0)
+%   light;
+%     lighting gouraud;
+%   
+%   plot3(cell(i*6-5),cell(i*6-4),cell(i*6-3),'or');
+%   plot3(cell(i*6-2),cell(i*6-1),cell(i*6),'or');
+%   
+%   pause(0.01);
+% 
+%   clf;
+% end
 
 fclose all;
