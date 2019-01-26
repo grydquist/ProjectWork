@@ -806,6 +806,7 @@
       rho=1D0
 
       !! Time step (still need to match to overall flow solver)
+      !! Also need consistency across particles
       ! Maxdt for overall solver
       maxdtp = 0.01D0
 
@@ -840,10 +841,6 @@
 
       ! Corrector
       myprt%vel = myprt%vel + 0.5D0*dtp*(apT+apTpred)
-
-      ! Collisions work. Just need to figure out how to change velocity of both particles
-      !! Maybe get only velocities for particles, bring those out, then advance all particles through flow in
-      !!    collision solver?
       
       !prtx = prtx + 0.5D0*dtp*(pvel+pvelpred)
       time=time+dtp
