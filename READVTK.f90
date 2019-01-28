@@ -20,7 +20,8 @@
 
       !prtcollide tests
       !REAL(KIND=8) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd), test1(nsd),tester(nsd), test2(nsd)
-      !REAL(KIND=8) ::test,test2(nsd)
+      REAL(KIND=8) :: pint,uint(nsd),xpt(nsd)
+      INTEGER      :: ID
 
       TYPE prt
       ! Properties
@@ -28,7 +29,7 @@
       ! Flow characteristics
          REAL(KIND=8) :: x(nsd), vel(nsd), prntx(nsd), shps(eNoN), remdtp
       ! Searechbox/ element location
-         INTEGER :: sbid(2**nsd), elid, near(Np)
+         INTEGER :: sbid, elid, near(Np)
       ! Collisions with other particles
          LOGICAL :: collided=.false.
       ! Restitution Coefficient
@@ -47,7 +48,7 @@
          INTEGER, ALLOCATABLE :: els(:)
       END TYPE sb
 
-      ! Domain spliited into sb's
+      ! Domain split into sb's
       type(sb), ALLOCATABLE :: sbdom(:)
 
       REAL, PARAMETER :: pi=3.1415926535897932384626433
@@ -288,8 +289,7 @@
       IEN=IEN+1
       cnt=1
 
-      ! Test interp
-      !Call INTERP((/-0.49D0,-1.52D0,6.84D0/),test,test2)!x(:,IEN(:,2)),test)84
+
 
       !Test particle velocity
       prts(1)%vel(1)=0
@@ -319,17 +319,23 @@
       vel = 0D0
       vel(3,:) = 0.4D0
       
-      CALL SBDomain(x,split,sbdom)
+      CALL SBDomain(split,sbdom)
       CALL xSB(prts(1),sbdom,split)
-      CALL xEl(sbdom(prts(1)%sbid(1)),prts(1),x)
+      CALL xEl(sbdom(prts(1)%sbid),prts(1),x)
 
+      ! Test interp
+      xpt = (/-0.49D0,-1.52D0,6.84D0/)
+
+      CALL SBx(xpt,sbdom,split,ID)
+      CALL INTERP(xpt,sbdom(ID),pint,uint)
+      
       time=0d0
       open(88,file='pos.txt')
 
       do a=1,10000
          do i=1,Np
             CALL xSB(prts(i),sbdom,split)
-            CALL xEl(sbdom(prts(i)%sbid(1)),prts(i),x)
+            CALL xEl(sbdom(prts(i)%sbid),prts(i),x)
             if (i.eq.2) then
                k=-1
             else
@@ -522,8 +528,7 @@
       END SUBROUTINE GNN
 
 !#################################################################### SBDOMAIN
-      SUBROUTINE SBDomain(x,split,sbdom)
-      REAL(KIND=8), INTENT(IN) :: x(nsd,nNo)
+      SUBROUTINE SBDomain(split,sbdom)
       INTEGER, INTENT(IN) :: split(nsd)
       TYPE(sb), INTENT(OUT), ALLOCATABLE :: sbdom(:)
       INTEGER :: ii,jj,cnt2,kk
@@ -540,33 +545,34 @@
       ALLOCATE(seq1(split(3)*split(2)),seq2(split(3)*split(1)),seq3(split(2)*split(1)))
 
       ! Domain ranges
-      diff(1)=MAXVAL(x(1,:))-MINVAL(x(1,:))
-      diff(2)=MAXVAL(x(2,:))-MINVAL(x(2,:))
-      diff(3)=MAXVAL(x(3,:))-MINVAL(x(3,:))
+      diff(1) = MAXVAL(x(1,:)) - MINVAL(x(1,:))
+      diff(2) = MAXVAL(x(2,:)) - MINVAL(x(2,:))
+      diff(3) = MAXVAL(x(3,:)) - MINVAL(x(3,:))
       ! Size of sb
-      do ii = 1,(split(1)*split(2)*split(3))
-         sbdom(ii)%step=diff/((split+1)/2)
+      do ii = 1,1!(split(1)*split(2)*split(3))
+         sbdom(ii)%step = diff/split
       end do
 
       seq1=(/(ii, ii=0, split(2)*split(3)-1, 1)/)*split(1)+1
       cnt2=0
       do ii=1,split(1)*split(3)
-            seq2(ii)=ii+cnt2*(split(2)-1)*split(1)
-            if (MOD(ii,split(1)).eq.0) cnt2=cnt2+1
+            seq2(ii) = ii + cnt2*(split(2) - 1)*split(1)
+            if (MOD(ii,split(1)).eq.0) cnt2 = cnt2 + 1
       end do
-      seq3=(/(ii, ii=0, split(1)*split(2)-1, 1)/)+1
+      seq3=(/(ii, ii=0, split(1)*split(2) - 1, 1)/) + 1
 
-      ! Allocating sbdim, such that they overlap by 50%
+      ! Allocating sbdim with min and max dimensions
       do ii=1,split(1)
-         sbdom(seq1+ii-1)%dim(1) = MINVAL(x(1,:)) + sbdom(1)%step(1)*(ii-1)/2
+         sbdom(seq1 + ii - 1)%dim(1) = MINVAL(x(1,:)) + sbdom(1)%step(1)*(ii)
       end do
 
       do ii=1,split(2)
-         sbdom(seq2+(ii-1)*split(1))%dim(3) = MINVAL(x(2,:)) + sbdom(1)%step(2)*(ii-1)/2
+         sbdom(seq2 + ( ii - 1)*split(1))%dim(3) = MINVAL(x(2,:)) + sbdom(1)%step(2)*(ii)
       end do
 
       do ii=1,split(3)
-         sbdom(seq3+(ii-1)*split(1)*split(2))%dim(5)=MINVAL(x(3,:))+sbdom(1)%step(3)*(ii-1)/2
+         sbdom(seq3 + (ii - 1)*split(1)*split(2))%dim(5) = &
+     &    MINVAL(x(3,:)) + sbdom(1)%step(3)*(ii)
       end do
 
       sbdom%dim(2) = sbdom%dim(1) + sbdom(1)%step(1)
@@ -616,23 +622,11 @@
       xzero(2) = myprt%x(2) - minval(sbdom%dim(3))
       xzero(3) = myprt%x(3) - minval(sbdom%dim(5))
 
-      ! Find which searchbox the particle is in
       ! Number of searchbox steps in x,y,and z
-      xsteps=FLOOR(2*xzero/sbdom(1)%step)
-      ! furthest searchbox in front
-      myprt%sbid(1) = xsteps(1)+split(1)*xsteps(2)+split(1)*split(2)*xsteps(3)+1
-      ! previous sb in x
-      myprt%sbid(2) = myprt%sbid(1)-1
-      ! previous sb's in y
-      myprt%sbid(3) = myprt%sbid(1)-split(1)
-      myprt%sbid(4) = myprt%sbid(3)-1
-      ! Next sb's in z (if available)
-      if (nsd.eq.3) then
-         myprt%sbid(5) = myprt%sbid(1) - split(1)*split(2)
-         myprt%sbid(6) = myprt%sbid(5) - 1
-         myprt%sbid(7) = myprt%sbid(5) - split(1)
-         myprt%sbid(8) = myprt%sbid(7) - 1
-      end if
+      xsteps=FLOOR(xzero/(sbdom(1)%step))
+      ! ID of sb x is in
+      myprt%sbid = xsteps(1) + split(1)*xsteps(2) + split(1)*split(2)*xsteps(3) + 1
+
       RETURN
       END SUBROUTINE xSB
 
@@ -730,7 +724,6 @@
       ! the particle is outside the domain
       if (myprt%elid.eq.0) THEN
          print *, 'outside domain'
-         !print *, minval
       end if
 
       END SUBROUTINE xEl
@@ -834,7 +827,7 @@
       tmpprt%x   = prtxpred
 
       CALL xSB(tmpprt,sbdom,split)
-      CALL xEl(sbdom(tmpprt%sbid(1)),tmpprt,x)
+      CALL xEl(sbdom(tmpprt%sbid),tmpprt,x)
       CALL prtDrag(tmpprt,vel,apdpred)
 
       apTpred = apdpred + g*(1D0 - rho/myprt%rhop)
@@ -959,36 +952,45 @@
       cross = cross/sqrt(cross(1)**2D0 + cross(2)**2D0 + cross(3)**2D0)
       
       END FUNCTION cross
+!#################################################################### SBx
+      ! Find all Searchboxes x is in
+      SUBROUTINE SBx(x,sbdom,split,sbid)
+      IMPLICIT NONE
+      TYPE(sb), INTENT(IN), ALLOCATABLE :: sbdom(:)
+      REAL(KIND=8), INTENT(IN) :: x(nsd)
+      INTEGER, INTENT(IN) :: split(nsd)
+      INTEGER, INTENT(OUT) :: sbid
+      REAL(KIND=8) :: xzero(nsd)
+      INTEGER :: xsteps(nsd)
 
+      ! Set domain back to zero
+      xzero(1) = x(1) - minval(sbdom%dim(1))
+      xzero(2) = x(2) - minval(sbdom%dim(3))
+      xzero(3) = x(3) - minval(sbdom%dim(5))
+
+      ! Number of searchbox steps in x,y,and z
+      xsteps=FLOOR(xzero/(sbdom(1)%step))
+      ! ID of sb x is in
+      sbid = xsteps(1) + split(1)*xsteps(2) + split(1)*split(2)*xsteps(3) + 1
+
+      RETURN
+      END SUBROUTINE SBx
 !#################################################################### INTERP
       ! Finds element particle of position x is in is in
-      SUBROUTINE INTERP(xpt,pint,uint)
+      SUBROUTINE INTERP(xpt,sbdom,pint,uint)
       IMPLICIT NONE
       REAL(KIND=8), INTENT(IN) :: xpt(nsd)
       REAL(KIND=8), INTENT(OUT):: pint, uint(nsd)
+      TYPE(sb), INTENT(IN)     :: sbdom
       INTEGER :: ii,jj,a
       REAL(KIND=8) :: Jac,xXi(nsd,nsd), xiX(nsd,nsd),Nx(nsd,eNoN), &
-       &               Nxi(nsd,eNoN), shps(eNoN), prntx(nsd)
+       &               shps(eNoN), prntx(nsd)
     
-       ! Setting up matrix for inversion
-      Nxi(1,1) =  1D0
-      Nxi(2,1) =  0D0
-      Nxi(3,1) =  0D0
-      Nxi(1,2) =  0D0
-      Nxi(2,2) =  1D0
-      Nxi(3,2) =  0D0
-      Nxi(1,3) =  0D0
-      Nxi(2,3) =  0D0
-      Nxi(3,3) =  1D02
-      Nxi(1,4) = -1D0
-      Nxi(2,4) = -1D0
-      Nxi(3,4) = -1D0
-
       xXi = 0D0
       pint = 0D0
       uint = 0D0
 
-      do ii=1,nEl
+      do ii=1,size(sbdom%els)
 
       IF (nsd .EQ. 2) THEN
       !
@@ -1017,9 +1019,9 @@
       ELSE
 
          DO a=1, eNoN
-            xXi(:,1) = xXi(:,1) + x(:,IEN(a,ii))*Nxi(1,a)
-            xXi(:,2) = xXi(:,2) + x(:,IEN(a,ii))*Nxi(2,a)
-            xXi(:,3) = xXi(:,3) + x(:,IEN(a,ii))*Nxi(3,a)
+            xXi(:,1) = xXi(:,1) + x(:,IEN(a,sbdom%els(ii)))*Nxi(1,a)
+            xXi(:,2) = xXi(:,2) + x(:,IEN(a,sbdom%els(ii)))*Nxi(2,a)
+            xXi(:,3) = xXi(:,3) + x(:,IEN(a,sbdom%els(ii)))*Nxi(3,a)
          END DO
          
       ! Inverting matrix
@@ -1042,9 +1044,9 @@
          
          ! Finding coordinates in parent domain
          DO a=1, nsd
-       prntx(a) =      xiX(a,1)*( xpt(1) - x(1,IEN(4,ii))) + &
-     &                 xiX(a,2)*( xpt(2) - x(2,IEN(4,ii))) + &
-     &                 xiX(a,3)*( xpt(3) - x(3,IEN(4,ii)))
+       prntx(a) =      xiX(a,1)*( xpt(1) - x(1,IEN(4,sbdom%els(ii)))) + &
+     &                 xiX(a,2)*( xpt(2) - x(2,IEN(4,sbdom%els(ii)))) + &
+     &                 xiX(a,3)*( xpt(3) - x(3,IEN(4,sbdom%els(ii))))
          END DO
       END IF
 
@@ -1052,7 +1054,7 @@
        shps(1) =  prntx(1)
        shps(2) =  prntx(2)
        shps(3) =  prntx(3)
-       shps(4) = 1 -  prntx(1) -  prntx(2) -  prntx(3)
+       shps(4) =  1 - prntx(1) - prntx(2) - prntx(3)
       ! If shape functions positive, we've found the correct element
       IF (ALL(shps.gt.0D0)) then
          EXIT
@@ -1062,8 +1064,9 @@
    
    ! Using shape functions to interpolate value at coordinate
    do jj=1,eNoN
-      pint = pint + pres(IEN(jj,ii))*shps(jj)
-      uint = uint +vel(:,IEN(jj,ii))*shps(jj)
+      pint = pint + pres(IEN(jj,sbdom%els(ii)))*shps(jj)
+      uint = uint + vel(:,IEN(jj,sbdom%els(ii)))*shps(jj)
+      print *, vel(1,IEN(jj,sbdom%els(ii)))
    end do
          
    END SUBROUTINE INTERP
