@@ -85,7 +85,7 @@
       Nxi(3,4) = -1D0
 
 !     Reading the name of the vtk file
-      fName="pipe_example_100.vtk"
+      fName="sol_030.vtk"!"pipe_example_100.vtk"
       !CALL GETARG(1,fName)
       !fName = ADJUSTL(fName)
       fid = 1
@@ -284,12 +284,10 @@
 !####################################################################
 !     Your own implementation: nNo, nEl, x, vel, pres, IEN are given
 !####################################################################
-      pres = 1D0
+      !pres = 1D0
       !ALLOCATE(pGrad(nsd,nNo))
       IEN=IEN+1
       cnt=1
-
-
 
       !Test particle velocity
       prts(1)%vel(1)=0
@@ -304,11 +302,11 @@
 
       prts(1)%x(1) = 0D0
       prts(1)%x(2) = 0D0
-      prts(1)%x(3) = 10D0
+      prts(1)%x(3) = 0D0!10D0
 
       prts(2)%x(1) = 0D0
-      prts(2)%x(2) = 0.7D0
-      prts(2)%x(3) = 11.5D0
+      prts(2)%x(2) = 0.1D0
+      prts(2)%x(3) = 0D0!11.5D0
 
       ! split searchboxes this many times
       split = (/10,10,10/)
@@ -316,15 +314,15 @@
       ! Resititution Coefficient
       prts%k = 1D0
 
-      vel = 0D0
-      vel(3,:) = 0.4D0
+      !vel = 0D0
+      !vel(3,:) = 0.4D0
       
       CALL SBDomain(split,sbdom)
       CALL xSB(prts(1),sbdom,split)
       CALL xEl(sbdom(prts(1)%sbid),prts(1),x)
 
       ! Test interp
-      xpt = (/-0.49D0,-1.52D0,6.84D0/)
+      xpt = (/0d0,0d0,0.1d0/)!(/-0.49D0,-1.52D0,6.84D0/)
 
       CALL SBx(xpt,sbdom,split,ID)
       CALL INTERP(xpt,sbdom(ID),pint,uint)
@@ -986,11 +984,11 @@
       REAL(KIND=8) :: Jac,xXi(nsd,nsd), xiX(nsd,nsd),Nx(nsd,eNoN), &
        &               shps(eNoN), prntx(nsd)
     
-      xXi = 0D0
       pint = 0D0
       uint = 0D0
 
       do ii=1,size(sbdom%els)
+      xXi = 0D0
 
       IF (nsd .EQ. 2) THEN
       !
@@ -1066,8 +1064,14 @@
    do jj=1,eNoN
       pint = pint + pres(IEN(jj,sbdom%els(ii)))*shps(jj)
       uint = uint + vel(:,IEN(jj,sbdom%els(ii)))*shps(jj)
-      print *, vel(1,IEN(jj,sbdom%els(ii)))
    end do
+   !print *, pres(IEN(:,sbdom%els(ii))),pint,uint,vel(:,IEN(1,sbdom%els(ii))),shps
+   print *, x(:,IEN(1,sbdom%els(ii-1)))
+   print *, x(:,IEN(2,sbdom%els(ii)))
+   print *, x(:,IEN(3,sbdom%els(ii)))
+   print *, x(:,IEN(4,sbdom%els(ii)))
+   print *, xpt
+   call sleep(1)
          
    END SUBROUTINE INTERP
 
