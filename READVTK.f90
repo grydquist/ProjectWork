@@ -322,7 +322,7 @@
       CALL xEl(sbdom(prts(1)%sbid),prts(1),x)
 
       ! Test interp
-      xpt = (/0d0,0d0,0.1d0/)!(/-0.49D0,-1.52D0,6.84D0/)
+      xpt = (/-.23999D0,-.0000001D0, -0.5001D0/)!(/-0.49D0,-1.52D0,6.84D0/)
 
       CALL SBx(xpt,sbdom,split,ID)
       CALL INTERP(xpt,sbdom(ID),pint,uint)
@@ -533,6 +533,8 @@
       INTEGER, ALLOCATABLE :: seq1(:),seq2(:),seq3(:)
       REAL(KIND=8) :: diff(nsd), elbox(2*nsd,nEl)
       INTEGER, ALLOCATABLE :: sbel(:)
+      REAL(KIND=8) :: eps
+      eps = 1e-3
 
       ! dim is the dimensions of each of the search boxes, with minx,maxx,miny,maxy,minz,maxz
       ALLOCATE(sbdom(split(1)*split(2)*split(3)))
@@ -548,7 +550,7 @@
       diff(3) = MAXVAL(x(3,:)) - MINVAL(x(3,:))
       ! Size of sb
       do ii = 1,1!(split(1)*split(2)*split(3))
-         sbdom(ii)%step = diff/split
+         sbdom(ii)%step = diff/split + eps
       end do
 
       seq1=(/(ii, ii=0, split(2)*split(3)-1, 1)/)*split(1)+1
@@ -561,16 +563,16 @@
 
       ! Allocating sbdim with min and max dimensions
       do ii=1,split(1)
-         sbdom(seq1 + ii - 1)%dim(1) = MINVAL(x(1,:)) + sbdom(1)%step(1)*(ii)
+         sbdom(seq1 + ii - 1)%dim(1) = MINVAL(x(1,:)) + sbdom(1)%step(1)*(ii-1) -eps/2
       end do
 
       do ii=1,split(2)
-         sbdom(seq2 + ( ii - 1)*split(1))%dim(3) = MINVAL(x(2,:)) + sbdom(1)%step(2)*(ii)
+         sbdom(seq2 + ( ii - 1)*split(1))%dim(3) = MINVAL(x(2,:)) + sbdom(1)%step(2)*(ii-1)-eps/2
       end do
 
       do ii=1,split(3)
          sbdom(seq3 + (ii - 1)*split(1)*split(2))%dim(5) = &
-     &    MINVAL(x(3,:)) + sbdom(1)%step(3)*(ii)
+     &    MINVAL(x(3,:)) + sbdom(1)%step(3)*(ii-1) -eps/2
       end do
 
       sbdom%dim(2) = sbdom%dim(1) + sbdom(1)%step(1)
@@ -971,6 +973,7 @@
       ! ID of sb x is in
       sbid = xsteps(1) + split(1)*xsteps(2) + split(1)*split(2)*xsteps(3) + 1
 
+      print *, xzero(3), minval(sbdom%dim(5))
       RETURN
       END SUBROUTINE SBx
 !#################################################################### INTERP
@@ -982,7 +985,7 @@
       TYPE(sb), INTENT(IN)     :: sbdom
       INTEGER :: ii,jj,a
       REAL(KIND=8) :: Jac,xXi(nsd,nsd), xiX(nsd,nsd),Nx(nsd,eNoN), &
-       &               shps(eNoN), prntx(nsd)
+       &               shps(eNoN), prntx(nsd), minshps(eNoN)
     
       pint = 0D0
       uint = 0D0
@@ -1054,7 +1057,7 @@
        shps(3) =  prntx(3)
        shps(4) =  1 - prntx(1) - prntx(2) - prntx(3)
       ! If shape functions positive, we've found the correct element
-      IF (ALL(shps.gt.0D0)) then
+      IF (ALL(shps.ge.-1e-2)) then
          EXIT
       END IF
 
@@ -1066,7 +1069,8 @@
       uint = uint + vel(:,IEN(jj,sbdom%els(ii)))*shps(jj)
    end do
    !print *, pres(IEN(:,sbdom%els(ii))),pint,uint,vel(:,IEN(1,sbdom%els(ii))),shps
-   print *, x(:,IEN(1,sbdom%els(ii-1)))
+   print *, shps
+   print *, x(:,IEN(1,sbdom%els(ii)))
    print *, x(:,IEN(2,sbdom%els(ii)))
    print *, x(:,IEN(3,sbdom%els(ii)))
    print *, x(:,IEN(4,sbdom%els(ii)))
