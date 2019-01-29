@@ -970,7 +970,9 @@
       REAL(KIND=8) :: Jac,xXi(nsd,nsd), xiX(nsd,nsd),Nx(nsd,eNoN), &
        &               Nxi(nsd,eNoN), shps(eNoN), prntx(nsd)
     
-       ! Setting up matrix for inversion
+      pint = 0D0
+      uint = 0D0
+
       Nxi(1,1) =  1D0
       Nxi(2,1) =  0D0
       Nxi(3,1) =  0D0
@@ -984,12 +986,8 @@
       Nxi(2,4) = -1D0
       Nxi(3,4) = -1D0
 
-      xXi = 0D0
-      pint = 0D0
-      uint = 0D0
-
       do ii=1,nEl
-
+         xXi = 0D0
       IF (nsd .EQ. 2) THEN
       !
       ! 2D not done
@@ -1057,15 +1055,20 @@
       IF (ALL(shps.ge.0D0)) then
          EXIT
       END IF
-
    end do
-   print *, shps
    ! Using shape functions to interpolate value at coordinate
+
+   print *, x(:,IEN(1,(ii)))
+   print *, x(:,IEN(2,(ii)))
+   print *, x(:,IEN(3,(ii)))
+   print *, x(:,IEN(4,(ii)))         
+   print *, ii
+   print *, shps
+
    do jj=1,eNoN
       pint = pint + pres(IEN(jj,ii))*shps(jj)
       uint = uint +vel(:,IEN(jj,ii))*shps(jj)
    end do
-         
    END SUBROUTINE INTERP
 
 
