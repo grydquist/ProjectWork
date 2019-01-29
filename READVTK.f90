@@ -20,7 +20,7 @@
 
       !prtcollide tests
       !REAL(KIND=8) :: x1(nsd), x2(nsd), v1(nsd), v2(nsd), test1(nsd),tester(nsd), test2(nsd)
-      !REAL(KIND=8) ::test,test2(nsd)
+      REAL(KIND=8) ::test,test2(nsd)
 
       TYPE prt
       ! Properties
@@ -84,7 +84,7 @@
       Nxi(3,4) = -1D0
 
 !     Reading the name of the vtk file
-      fName="pipe_example_100.vtk"
+      fName="sol_030.vtk"!"pipe_example_100.vtk"
       !CALL GETARG(1,fName)
       !fName = ADJUSTL(fName)
       fid = 1
@@ -289,7 +289,7 @@
       cnt=1
 
       ! Test interp
-      !Call INTERP((/-0.49D0,-1.52D0,6.84D0/),test,test2)!x(:,IEN(:,2)),test)84
+      Call INTERP((/-0.248D0,0.003D0,0.5D0/),test,test2)!x(:,IEN(:,2)),test)84
 
       !Test particle velocity
       prts(1)%vel(1)=0
@@ -979,7 +979,7 @@
       Nxi(3,2) =  0D0
       Nxi(1,3) =  0D0
       Nxi(2,3) =  0D0
-      Nxi(3,3) =  1D02
+      Nxi(3,3) =  1D0
       Nxi(1,4) = -1D0
       Nxi(2,4) = -1D0
       Nxi(3,4) = -1D0
@@ -1054,12 +1054,12 @@
        shps(3) =  prntx(3)
        shps(4) = 1 -  prntx(1) -  prntx(2) -  prntx(3)
       ! If shape functions positive, we've found the correct element
-      IF (ALL(shps.gt.0D0)) then
+      IF (ALL(shps.ge.0D0)) then
          EXIT
       END IF
 
    end do
-   
+   print *, shps
    ! Using shape functions to interpolate value at coordinate
    do jj=1,eNoN
       pint = pint + pres(IEN(jj,ii))*shps(jj)
